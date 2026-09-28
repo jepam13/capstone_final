@@ -48,6 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'GET' && isset($_GET['status_id'])) {
     $quantity = $_GET['quantity'];
     $unit = $_GET['unit'];
     $status = $_GET['status_id'];
+    
 # Auto insert if completed instead. 
 # prod_id	product	quantity	unit	status	description	created_at	updated_at	
     if ($status == 'Completed') {

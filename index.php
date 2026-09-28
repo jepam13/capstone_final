@@ -68,11 +68,12 @@ $goalData = array_fill(0, count($chartData), $salesGoal);
 <body>
     <?php require_once "main-sidebar.php"; ?>
     <?php
-    // Fetch the non-completed vermi for totla current stock:
-    $vermi = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE status != 'Completed'");
+    // Total stock lives in the single-row `total` ledger (added by completed
+    // batches in updateBatch.php, deducted in insertItem.php).
+    $vermi = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
     $vermi->execute();
 
-    $current_vermicast = (int) $vermi->fetchColumn();
+    $current_vermicast = (int) ($vermi->fetchColumn() ?? 0);
     ?>
     <div class="dashboardpage">
         <div class="page-header">
