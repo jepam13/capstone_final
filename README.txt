@@ -33,8 +33,8 @@ CREATE TABLE accounts (
 );
 
 CREATE TABLE total (
-    total_stock INT
-)
+    total_stock INT NOT NULL DEFAULT 0
+);
 
 CREATE TABLE inventory (
     prod_id VARCHAR(15) PRIMARY KEY,
