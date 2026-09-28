@@ -36,7 +36,7 @@ $userName = $_SESSION['user_name'] ?? '';
             </li>
         <?php endif; ?>
 
-        <?php if (in_array($userRole, ['admin', 'staff'])): ?>
+        <?php if (in_array($userRole, ['admin', 'staff', 'manager'])): ?>
             <li class="<?=$currentPage == 'production.php' ? 'active' : ''?>" data-page="production.php">
                 <i class="fa-solid fa-industry"></i>
                 <span>Production</span>
@@ -85,6 +85,7 @@ $userName = $_SESSION['user_name'] ?? '';
             </li>
         <?php endif; ?>-->
     </ul>
+    <img src="assets/img/rutoplogos.png">
 
     <div class="currentUser">
         <div class="user-info">
@@ -101,7 +102,7 @@ $userName = $_SESSION['user_name'] ?? '';
             </form>
         <?php endif; ?>
     </div>
-<img src="assets/img/rutoplogos.png">
+
 </div>
 
 

@@ -56,7 +56,7 @@ $chGran = $_GET['ch-gran'] ?? 'daily';
 if (!in_array($chGran, ['daily', 'weekly', 'monthly', 'custom'], true)) {
     $chGran = 'daily';
 }
-$chN = isset($_GET['ch-n']) ? (int)$_GET['ch-n'] : 7;
+$chN = isset($_GET['ch-n']) ? (int) $_GET['ch-n'] : 7;
 if ($chN < 1) {
     $chN = 1;
 }
@@ -111,38 +111,88 @@ if ($chGran === 'weekly') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory</title>
     <link rel="stylesheet" href="style.css">
-    <?php $NEED_CHART = true; require_once "php_backend/head_assets.php"; ?>
+    <?php $NEED_CHART = true;
+    require_once "php_backend/head_assets.php"; ?>
 </head>
+
 <body>
     <?php require_once "main-sidebar.php"; ?>
 
     <!-- Insert/Add Item Dialog START -->
     <dialog id="item-diag">
         <div class="dialog-header">
-            <h3><i class="fa-solid fa-circle-plus"></i> Add Item</h3>
+            <h3><i class="fa-solid fa-circle-plus"></i>Update/Select Item</h3>
         </div>
+
+        <?php
+
+        require_once "php_backend/session.php";
+
+        $stmt = $pdo->prepare("SELECT prod_id, product, quantity, unit, status FROM inventory WHERE status != 'Completed'");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        ?>
         <div class="dialog-body">
             <form method="POST" action="php_backend/insertItem.php">
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label>Name</label>
-                    <input type="text" name="product_name" value="Vermicast" required>
+                    <select name="product_id" id="selectItem" required>
+                        <option value="">Select existing item or enter new</option>
+                        <?php foreach ($rows as $row): ?>
+                            <option value="<?= htmlspecialchars($row['prod_id']) ?>"
+                                data-quantity="<?= htmlspecialchars($row['quantity']) ?>"
+                                data-unit="<?= htmlspecialchars($row['unit']) ?>"
+                                data-status="<?= htmlspecialchars($row['status']) ?>">
+                                <?= htmlspecialchars($row['product']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div id="itemChecklist"
+                        style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 8px; border-radius: 4px; margin-top: 8px; display: none;">
+                        <?php foreach ($rows as $row): ?>
+                            <label
+                                style="display: flex; align-items: center; gap: 10px; padding: 8px; cursor: pointer; border-radius: 3px; border: 1px solid transparent;"
+                                onmouseover="this.style.background='#f5f5f5'; this.style.borderColor='#ddd'"
+                                onmouseout="this.style.background=''; this.style.borderColor='transparent'">
+                                <input type="checkbox" name="checklist_items[]"
+                                    value="<?= htmlspecialchars($row['prod_id']) ?>"
+                                    data-quantity="<?= htmlspecialchars($row['quantity']) ?>"
+                                    data-unit="<?= htmlspecialchars($row['unit']) ?>"
+                                    data-status="<?= htmlspecialchars($row['status']) ?>"
+                                    data-name="<?= htmlspecialchars($row['product']) ?>"
+                                    onchange="updateChecklistSelection(this)"
+                                    style="width: 18px; height: 18px; accent-color: #2e7d32;">
+                                <div style="flex: 1; min-width: 0;">
+                                    <strong style="font-size: 0.95rem;"><?= htmlspecialchars($row['product']) ?></strong>
+                                    <div style="font-size: 0.8rem; color: #666; margin-top: 2px;">
+                                        ID: <?= htmlspecialchars($row['prod_id']) ?> •
+                                        Stock: <?= htmlspecialchars($row['quantity']) ?>
+                                        <?= htmlspecialchars($row['unit']) ?> •
+                                        Status: <?= htmlspecialchars($row['status']) ?>
+                                    </div>
+                                </div>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" id="toggleChecklist" class="btn-secondary"
+                        style="margin-top: 8px; padding: 4px 10px; font-size: 0.85rem;">Show Item Checklist</button>
+                    <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">Select from dropdown (single) or use
+                        checklist (multiple)</div>
+                    <input type="hidden" name="checklist_product_ids" id="checklistProductIds" value="">
+                    <!--Iterate to select existing items-->
                 </div>
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Quantity</label>
+                    <div style="margin-bottom: 8px;">Current Stock: <strong id="currentStockDisplay">—</strong></div>
+                    <label>Amount to Deduct: </label>
                     <input type="number" name="quantity" min="0" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Unit</label>
-<select id="metrics" name="metrics" required>
-                <option value="">Type</option>
-                <option value="Sacks">Sacks</option>
-                <option value="KG">KG</option>
-            </select>
+                    <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">Amount to remove (Sacks). Removing
+                        the full stock deletes the item.</div>
                 </div>
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label>Status</label>
@@ -154,19 +204,117 @@ if ($chGran === 'weekly') {
                     </select>
                 </div>
                 <details class="dialog-details">
-                    <summary class="summaries">Info - Optional</summary>
+                    <summary class="summaries">Receiver Name</summary>
                     <div class="form-group" style="margin-top: 8px;">
-                        <label>Description / Notes</label>
-                        <textarea placeholder="Notes.. OPTIONAL" name="description" class="desc"></textarea>
+                        <label>Receipt</label>
+                        <textarea placeholder="Enter Company/Client" name="description" class="desc"></textarea>
                     </div>
                 </details>
                 <div class="dialog-actions">
                     <button type="button" class="btn-secondary" command="close" commandfor="item-diag">Cancel</button>
-                    <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Insert Item</button>
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-plus"></i> Remove Item</button>
                 </div>
             </form>
         </div>
     </dialog> <!-- Insert/Add Item Dialog END -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const selectItem = document.getElementById('selectItem');
+            const quantityInput = document.getElementById('itemQuantity');
+            const stockDisplay = document.getElementById('currentStockDisplay');
+            const statusSelect = document.getElementById('stat');
+            const checklist = document.getElementById('itemChecklist');
+            const toggleBtn = document.getElementById('toggleChecklist');
+
+            // Select dropdown change handler
+            if (selectItem) {
+                selectItem.addEventListener('change', function () {
+                    const selectedOption = this.options[this.selectedIndex];
+                    if (selectedOption.value) {
+                        const stockQty = parseInt(selectedOption.dataset.quantity) || 0;
+                        if (stockDisplay) {
+                            stockDisplay.textContent = stockQty + ' ' + (selectedOption.dataset.unit ||
+                                'Sacks');
+                        }
+                        quantityInput.value = selectedOption.dataset.quantity || '';
+                        quantityInput.max = stockQty;
+                        statusSelect.value = selectedOption.dataset.status || 'Recent';
+                    } else {
+                        if (stockDisplay) {
+                            stockDisplay.textContent = '—';
+                        }
+                        quantityInput.value = '';
+                        quantityInput.removeAttribute('max');
+                        statusSelect.value = 'Recent';
+                    }
+                });
+            }
+
+            // Checklist checkbox handler - multiple selection
+            window.updateChecklistSelection = function (checkbox) {
+                const checkedBoxes = document.querySelectorAll('input[name="checklist_items[]"]:checked');
+                const hiddenIds = document.getElementById('checklistProductIds');
+
+                if (checkedBoxes.length > 0) {
+                    // Calculate total quantity of all checked items
+                    let totalQty = 0;
+                    const ids = [];
+                    checkedBoxes.forEach(box => {
+                        totalQty += parseInt(box.dataset.quantity) || 0;
+                        ids.push(box.value);
+                    });
+
+                    // Use first checked item's status for form fields
+                    const first = checkedBoxes[0];
+                    quantityInput.value = totalQty; // Show total quantity
+                    quantityInput.max = totalQty;
+                    if (stockDisplay) {
+                        stockDisplay.textContent = totalQty + ' ' + (first.dataset.unit || 'Sacks') + ' (' +
+                            checkedBoxes.length + ' items)';
+                    }
+                    statusSelect.value = first.dataset.status || 'Recent';
+
+                    // Update hidden input with comma-separated product IDs
+                    if (hiddenIds) {
+                        hiddenIds.value = ids.join(',');
+                    }
+
+                    // Update select dropdown to match first checked
+                    if (selectItem) {
+                        selectItem.value = first.value;
+                    }
+                } else {
+                    quantityInput.value = '';
+                    quantityInput.removeAttribute('max');
+                    if (stockDisplay) {
+                        stockDisplay.textContent = '—';
+                    }
+                    statusSelect.value = 'Recent';
+                    if (hiddenIds) {
+                        hiddenIds.value = '';
+                    }
+                    if (selectItem) {
+                        selectItem.value = '';
+                    }
+                }
+            };
+
+            // Toggle checklist visibility
+            if (toggleBtn && checklist && selectItem) {
+                toggleBtn.addEventListener('click', function () {
+                    if (checklist.style.display === 'none') {
+                        checklist.style.display = 'block';
+                        selectItem.style.display = 'none';
+                        toggleBtn.textContent = 'Hide Item Checklist';
+                    } else {
+                        checklist.style.display = 'none';
+                        selectItem.style.display = '';
+                        toggleBtn.textContent = 'Show Item Checklist';
+                    }
+                });
+            }
+        });
+    </script>
 
     <!-- Edit/Update Dialog START -->
     <dialog id="edit-diag">
@@ -181,15 +329,11 @@ if ($chGran === 'weekly') {
                     <input type="text" name="product_name" id="edit_name" required>
                 </div>
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label>Quantity</label>
-                    <input type="number" name="quantity" id="edit_quantity" min="0" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 12px;">
                     <label>Metric</label>
-<select name="metrics" id="edit_metric" required>
-                <option value="Sacks">Sacks</option>
-                <option value="KG">KG</option>
-            </select>
+                    <select name="metrics" id="edit_metric" required>
+                        <option value="Sacks">Sacks</option>
+                        <option value="KG">KG</option>
+                    </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 12px;">
                     <label>Status</label>
@@ -202,7 +346,8 @@ if ($chGran === 'weekly') {
                 </div>
                 <details class="dialog-details">
                     <summary class="summaries">Info - Optional</summary>
-                    <input type="text" name="status-custom" id="status-custom" placeholder="Custom status" style="display:none;">
+                    <input type="text" name="status-custom" id="status-custom" placeholder="Custom status"
+                        style="display:none;">
                     <div class="form-group" style="margin-top: 8px;">
                         <label>Description / Notes</label>
                         <textarea placeholder="Notes.. OPTIONAL" name="description" class="desc"></textarea>
@@ -224,49 +369,65 @@ if ($chGran === 'weekly') {
         <div class="dialog-body">
             <div id="message" style="margin-bottom: 16px; color: var(--color-text-main);">Nothing to see here..</div>
             <div class="dialog-actions" style="justify-content: center;">
-                <button type="button" class="btn-primary" command="close" commandfor="feedback-diag" onclick="window.location.href='inventory.php'">Close</button>
+                <button type="button" class="btn-primary" command="close" commandfor="feedback-diag"
+                    onclick="window.location.href='inventory.php'">Close</button>
             </div>
         </div>
     </dialog>
+    <!--Script for Select Item/update to sstock out-->
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById('selectItem').addEventListener("change", () => {
+                let quantity = e.currentTarget.dataset.quantity;
+
+            })
+        });
+    </script>
 
     <div class="inventorypage">
         <div class="page-header">
             <h1>Inventory Management</h1>
         </div>
-                <?php  // TOTAL CURRENT
-                require_once "php_backend/db.php";
+        <!--
+        <?php  // TOTAL CURRENT
+        //require_once "php_backend/db.php";
 
-                $stmt_stock = $pdo->prepare("SELECT SUM(quantity) FROM inventory WHERE status != 'Completed'");
-                $stmt_stock->execute();
-                $total_current = $stmt_stock->fetchColumn();
-                ?>
+        $stmt_stock = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE status != 'Completed'");
+        $stmt_stock->execute();
+        $total_current = (int) $stmt_stock->fetchColumn();
+        ?>
         <div id="notif" class="notif">
             <i class="fa-solid fa-circle-info"></i>
             <span id="notif-text">Checking stock status...</span>
         </div>
         <script>
-            (function() {
+            (function () {
                 const notif = document.getElementById('notif');
                 <?php if ($total_current >= 100): ?>
                     notif.className = 'notif notif-green';
                     notif.style.color = '#15803d';
-                    notif.innerHTML = '<i class="fa-solid fa-circle-check"></i> Status: Good (<?= (int)$total_current ?> Sacks Available)';
+                    notif.innerHTML =
+                        '<i class="fa-solid fa-circle-check"></i> Status: Good (<?= (int) $total_current ?> Sacks Available)';
                 <?php elseif ($total_current >= 50): ?>
                     notif.className = 'notif notif-good';
                     notif.style.color = '#15803d';
-                    notif.innerHTML = '<i class="fa-solid fa-circle-info"></i> Status: Sufficient (<?= (int)$total_current ?> Sacks Available)';
+                    notif.innerHTML =
+                        '<i class="fa-solid fa-circle-info"></i> Status: Sufficient (<?= (int) $total_current ?> Sacks Available)';
                 <?php elseif ($total_current >= 20): ?>
                     notif.className = 'notif notif-good';
                     notif.style.color = '#15803d';
-                    notif.innerHTML = '<i class="fa-solid fa-circle-info"></i> Status: OK (<?= (int)$total_current ?> Sacks Available)';
+                    notif.innerHTML =
+                        '<i class="fa-solid fa-circle-info"></i> Status: OK (<?= (int) $total_current ?> Sacks Available)';
                 <?php elseif ($total_current >= 8): ?>
                     notif.className = 'notif notif-orange';
                     notif.style.color = 'orange';
-                    notif.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Status: Low Stock (<?= (int)$total_current ?> Sacks Left)';
+                    notif.innerHTML =
+                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Low Stock (<?= (int) $total_current ?> Sacks Left)';
                 <?php elseif ($total_current > 0): ?>
                     notif.className = 'notif notif-red';
                     notif.style.color = 'red';
-                    notif.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Status: Critically Low Stock! (<?= (int)$total_current ?> Sacks Left)';
+                    notif.innerHTML =
+                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Critically Low Stock! (<?= (int) $total_current ?> Sacks Left)';
                 <?php else: ?>
                     notif.className = 'notif notif-red';
                     notif.style.color = 'red';
@@ -274,34 +435,35 @@ if ($chGran === 'weekly') {
                 <?php endif; ?>
             })();
         </script>
-<!--Inventory head Summary-->
+        <!--Inventory head Summary-->
 
         <div class="info-cards">
             <div class="stat-card">
                 <h2>Current Stock</h2>
-                <h3><?=$total_current ?? 0?> Sacks</h3>
+                <h3><?= $total_current ?? 0 ?> Sacks</h3>
             </div>
 
             <div class="stat-card">
-                <?php 
+                <?php
                 $stmt_produced = $pdo->prepare("SELECT SUM(quantity) FROM production");
                 $stmt_produced->execute();
-                $total_produced = $stmt_produced->fetchColumn();  
+                $total_produced = $stmt_produced->fetchColumn();
                 ?>
                 <h2>Total Produced</h2>
-                <h3><?=$total_produced ?? 0 ?> Sacks</h3>
+                <h3><?= $total_produced ?? 0 ?> Sacks</h3>
             </div>
 
             <div class="stat-card">
-                <?php 
+                <?php
                 $stmt_stockout = $pdo->prepare("SELECT SUM(quantity) FROM inventory WHERE status = 'Completed'");
                 $stmt_stockout->execute();
-                $total_stockout = $stmt_stockout->fetchColumn();  
+                $total_stockout = $stmt_stockout->fetchColumn();
                 ?>
                 <h2>Total Stock-out</h2>
-                <h3><?=$total_stockout?> Sacks</h3>
+                <h3><?= $total_stockout ?> Sacks</h3>
             </div>
-        </div> <!--Inventory head Summary END-->
+        </div>
+        <!--Inventory head Summary END-->
 
         <!-- Inventory Analysis Chart -->
         <?php
@@ -312,13 +474,13 @@ if ($chGran === 'weekly') {
         $chStmtIn->execute([':start' => $chRangeStart . ' 00:00:00', ':end' => $chToday . ' 23:59:59']);
         $chIn = [];
         while ($ch_row = $chStmtIn->fetch(PDO::FETCH_ASSOC)) {
-            $chIn[$ch_row['day']] = (int)$ch_row['total_qty'];
+            $chIn[$ch_row['day']] = (int) $ch_row['total_qty'];
         }
         $chStmtOut = $pdo->prepare("SELECT DATE(updated_at) AS day, SUM(quantity) AS total_qty FROM inventory WHERE status = 'Completed' AND updated_at BETWEEN :start AND :end GROUP BY DATE(updated_at)");
         $chStmtOut->execute([':start' => $chRangeStart . ' 00:00:00', ':end' => $chToday . ' 23:59:59']);
         $chOut = [];
         while ($ch_row = $chStmtOut->fetch(PDO::FETCH_ASSOC)) {
-            $chOut[$ch_row['day']] = (int)$ch_row['total_qty'];
+            $chOut[$ch_row['day']] = (int) $ch_row['total_qty'];
         }
         $chBuckets = [];
         if ($chGran === 'weekly') {
@@ -357,7 +519,7 @@ if ($chGran === 'weekly') {
         $chProd = [];
         $chOutPts = [];
         $chBalPts = [];
-        $chBal = (int)$total_current;
+        $chBal = (int) $total_current;
         for ($chBi = count($chBuckets) - 1; $chBi >= 0; $chBi--) {
             $chBIn = 0;
             $chBOut = 0;
@@ -379,7 +541,7 @@ if ($chGran === 'weekly') {
             $chBalPts[] = $chB['bal'];
         }
         $salesGoalFileInv = __DIR__ . '/php_backend/sales_goal.php';
-        $salesGoalInv = file_exists($salesGoalFileInv) ? max(0, (int)include $salesGoalFileInv) : 50;
+        $salesGoalInv = file_exists($salesGoalFileInv) ? max(0, (int) include $salesGoalFileInv) : 50;
         ?>
         <div class="content-card">
             <div class="card-header card-header-flex">
@@ -387,33 +549,38 @@ if ($chGran === 'weekly') {
                 <div class="card-filter">
                     <div class="search-bar">
                         <form method="GET" action="inventory.php" id="chart-filter-form">
-                        <?php if ($searchInv !== '' && $searchInv !== '%%'): ?>
-                        <input type="hidden" name="search-inv" value="<?= htmlspecialchars(trim($_GET['search-inv'] ?? '')) ?>">
-                        <?php endif; ?>
-                        <?php if ($currentDate !== 'all'): ?>
-                        <input type="hidden" name="current-date" value="<?= htmlspecialchars($currentDate) ?>">
-                        <?php endif; ?>
-                        <?php if ($searchHistory !== ''): ?>
-                        <input type="hidden" name="search-history" value="<?= htmlspecialchars($searchHistory) ?>">
-                        <?php endif; ?>
-                        <?php if ($historyDate !== 'all'): ?>
-                        <input type="hidden" name="history-date" value="<?= htmlspecialchars($historyDate) ?>">
-                        <?php endif; ?>
-                        <i class="fa-solid fa-filter"></i>
-                        <label for="chart-gran">View:</label>
-                        <select id="chart-gran" name="ch-gran" onchange="document.getElementById('chart-filter-form').submit()">
-                            <option value="daily" <?= $chGran === 'daily' ? 'selected' : '' ?>>Daily</option>
-                            <option value="weekly" <?= $chGran === 'weekly' ? 'selected' : '' ?>>Weekly</option>
-                            <option value="monthly" <?= $chGran === 'monthly' ? 'selected' : '' ?>>Monthly</option>
-                            <option value="custom" <?= $chGran === 'custom' ? 'selected' : '' ?>>Custom</option>
-                        </select>
-                        <label for="chart-n">Last:</label>
-                        <input type="number" id="chart-n" name="ch-n" min="1" max="93" value="<?= htmlspecialchars($chN) ?>" style="width:64px;">
-                        <label for="chart-from">From:</label>
-                        <input type="date" id="chart-from" name="ch-from" value="<?= $chGran === 'custom' ? htmlspecialchars($chRangeStart) : '' ?>">
-                        <label for="chart-to">To:</label>
-                        <input type="date" id="chart-to" name="ch-to" value="<?= $chGran === 'custom' ? htmlspecialchars($chRangeEnd) : '' ?>">
-                        <button type="submit" class="btn-secondary" style="padding:6px 10px;">Apply</button>
+                            <?php if ($searchInv !== '' && $searchInv !== '%%'): ?>
+                                <input type="hidden" name="search-inv"
+                                    value="<?= htmlspecialchars(trim($_GET['search-inv'] ?? '')) ?>">
+                            <?php endif; ?>
+                            <?php if ($currentDate !== 'all'): ?>
+                                <input type="hidden" name="current-date" value="<?= htmlspecialchars($currentDate) ?>">
+                            <?php endif; ?>
+                            <?php if ($searchHistory !== ''): ?>
+                                <input type="hidden" name="search-history" value="<?= htmlspecialchars($searchHistory) ?>">
+                            <?php endif; ?>
+                            <?php if ($historyDate !== 'all'): ?>
+                                <input type="hidden" name="history-date" value="<?= htmlspecialchars($historyDate) ?>">
+                            <?php endif; ?>
+                            <i class="fa-solid fa-filter"></i>
+                            <label for="chart-gran">View:</label>
+                            <select id="chart-gran" name="ch-gran"
+                                onchange="document.getElementById('chart-filter-form').submit()">
+                                <option value="daily" <?= $chGran === 'daily' ? 'selected' : '' ?>>Daily</option>
+                                <option value="weekly" <?= $chGran === 'weekly' ? 'selected' : '' ?>>Weekly</option>
+                                <option value="monthly" <?= $chGran === 'monthly' ? 'selected' : '' ?>>Monthly</option>
+                                <option value="custom" <?= $chGran === 'custom' ? 'selected' : '' ?>>Custom</option>
+                            </select>
+                            <label for="chart-n">Last:</label>
+                            <input type="number" id="chart-n" name="ch-n" min="1" max="93"
+                                value="<?= htmlspecialchars($chN) ?>" style="width:64px;">
+                            <label for="chart-from">From:</label>
+                            <input type="date" id="chart-from" name="ch-from"
+                                value="<?= $chGran === 'custom' ? htmlspecialchars($chRangeStart) : '' ?>">
+                            <label for="chart-to">To:</label>
+                            <input type="date" id="chart-to" name="ch-to"
+                                value="<?= $chGran === 'custom' ? htmlspecialchars($chRangeEnd) : '' ?>">
+                            <button type="submit" class="btn-secondary" style="padding:6px 10px;">Apply</button>
                         </form>
                     </div>
                 </div>
@@ -423,23 +590,54 @@ if ($chGran === 'weekly') {
             </div>
         </div>
         <script>
-        const chLabels = <?= json_encode($chLabels) ?>;
-        const chProd = <?= json_encode($chProd) ?>;
-        const chOut = <?= json_encode($chOutPts) ?>;
-        const chBal = <?= json_encode($chBalPts) ?>;
-        new Chart(document.getElementById('levelChart'), {
-            data: { labels: chLabels, datasets: [
-                { type: 'bar', label: 'Production', data: chProd, backgroundColor: 'rgba(34,197,94,0.6)' },
-                { type: 'bar', label: 'Stock-Out', data: chOut, backgroundColor: 'rgba(239,68,68,0.6)' },
-                { type: 'line', label: 'Ending Balance (Sacks)', data: chBal, borderColor: '#22c55e', tension: 0.3, pointRadius: 3 }
-            ]},
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: true }},
-                scales: { y: { beginAtZero: true, title: { display: true, text: 'Sacks' }}}
-            }
-        });
+            const chLabels = <?= json_encode($chLabels) ?>;
+            const chProd = <?= json_encode($chProd) ?>;
+            const chOut = <?= json_encode($chOutPts) ?>;
+            const chBal = <?= json_encode($chBalPts) ?>;
+            new Chart(document.getElementById('levelChart'), {
+                data: {
+                    labels: chLabels,
+                    datasets: [{
+                        type: 'bar',
+                        label: 'Production',
+                        data: chProd,
+                        backgroundColor: 'rgba(34,197,94,0.6)'
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Stock-Out',
+                        data: chOut,
+                        backgroundColor: 'rgba(239,68,68,0.6)'
+                    },
+                    {
+                        type: 'line',
+                        label: 'Ending Balance (Sacks)',
+                        data: chBal,
+                        borderColor: '#22c55e',
+                        tension: 0.3,
+                        pointRadius: 3
+                    }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Sacks'
+                            }
+                        }
+                    }
+                }
+            });
         </script>
 
         <!-- Card 1: Current Stock Levels -->
@@ -449,126 +647,149 @@ if ($chGran === 'weekly') {
                 <div class="card-filter">
                     <div class="search-bar">
                         <form method="GET" action="inventory.php" id="current-filter-form">
-                        <?php if ($historyDate !== 'all'): ?>
-                        <input type="hidden" name="history-date" value="<?= htmlspecialchars($historyDate) ?>">
-                        <?php endif; ?>
-                        <?php if ($chGran !== 'daily'): ?>
-                        <input type="hidden" name="ch-gran" value="<?= htmlspecialchars($chGran) ?>">
-                        <?php endif; ?>
-                        <?php if ($chN != 7): ?>
-                        <input type="hidden" name="ch-n" value="<?= htmlspecialchars($chN) ?>">
-                        <?php endif; ?>
-                        <?php if ($chGran === 'custom'): ?>
-                        <input type="hidden" name="ch-from" value="<?= htmlspecialchars($chRangeStart) ?>">
-                        <input type="hidden" name="ch-to" value="<?= htmlspecialchars($chRangeEnd) ?>">
-                        <?php endif; ?>
-                        <input type="text" id="search-box-inv" placeholder="Search..." name="search-inv" value="<?= htmlspecialchars($searchInv) ?>"><!--Set the value of search bar for consistent memory-->
-                        <button type="submit" id="search-btn-inv"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            <?php if ($historyDate !== 'all'): ?>
+                                <input type="hidden" name="history-date" value="<?= htmlspecialchars($historyDate) ?>">
+                            <?php endif; ?>
+                            <?php if ($chGran !== 'daily'): ?>
+                                <input type="hidden" name="ch-gran" value="<?= htmlspecialchars($chGran) ?>">
+                            <?php endif; ?>
+                            <?php if ($chN != 7): ?>
+                                <input type="hidden" name="ch-n" value="<?= htmlspecialchars($chN) ?>">
+                            <?php endif; ?>
+                            <?php if ($chGran === 'custom'): ?>
+                                <input type="hidden" name="ch-from" value="<?= htmlspecialchars($chRangeStart) ?>">
+                                <input type="hidden" name="ch-to" value="<?= htmlspecialchars($chRangeEnd) ?>">
+                            <?php endif; ?>
+                            <input type="text" id="search-box-inv" placeholder="Search..." name="search-inv"
+                                value="<?= htmlspecialchars($searchInv) ?>">
+                            <!--Set the value of search bar for consistent memory-->
+                            <button type="submit" id="search-btn-inv"><i
+                                    class="fa-solid fa-magnifying-glass"></i></button>
 
-                        <?php
-                        require_once "php_backend/db.php";
-                        // Fetch the search var value.
-                        $searchInv = trim($_GET['search-inv'] ?? '');
-                        $searchInv = "%{$searchInv}%";
-                        $dateOpts = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY d DESC");
-                        $dateOpts->bindValue(':search', $searchInv);
-                        $dateOpts->execute();
-                        $currentDates = $dateOpts->fetchAll(PDO::FETCH_COLUMN);
-                        $monthOpts = $pdo->prepare("SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') AS m FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY m DESC");
-                        $monthOpts->bindValue(':search', $searchInv);
-                        $monthOpts->execute();
-                        $currentMonths = $monthOpts->fetchAll(PDO::FETCH_COLUMN);
-                        $yearOpts = $pdo->prepare("SELECT DISTINCT YEAR(created_at) AS y FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY y DESC");
-                        $yearOpts->bindValue(':search', $searchInv);
-                        $yearOpts->execute();
-                        $currentYears = $yearOpts->fetchAll(PDO::FETCH_COLUMN);
-                        ?>
-                        <i class="fa-solid fa-filter"></i>
-                        <label for="current-date-filter">Filter by Date:</label>
-                        <select id="current-date-filter" name="current-date" onchange="document.getElementById('current-filter-form').submit()">
-                            <option value="all" <?= $currentDate === 'all' ? 'selected' : '' ?>>All Dates</option>
-                            <?php foreach ($currentDates as $d): ?>
-                            <option value="<?= htmlspecialchars($d) ?>" <?= $currentDate === $d ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="current-month-filter">Month:</label>
-                        <select id="current-month-filter" name="current-month" onchange="document.getElementById('current-filter-form').submit()">
-                            <option value="all" <?= $currentMonth === 'all' ? 'selected' : '' ?>>All Months</option>
-                            <?php foreach ($currentMonths as $m): ?>
-                            <option value="<?= htmlspecialchars($m) ?>" <?= $currentMonth === $m ? 'selected' : '' ?>><?= htmlspecialchars(date('M Y', strtotime($m . '-01'))) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="current-year-filter">Year:</label>
-                        <select id="current-year-filter" name="current-year" onchange="document.getElementById('current-filter-form').submit()">
-                            <option value="all" <?= $currentYear === 'all' ? 'selected' : '' ?>>All Years</option>
-                            <?php foreach ($currentYears as $y): ?>
-                            <option value="<?= htmlspecialchars($y) ?>" <?= (string)$currentYear === (string)$y ? 'selected' : '' ?>><?= htmlspecialchars($y) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="current-status-filter">Status:</label>
-                        <select id="current-status-filter" name="current-status" onchange="document.getElementById('current-filter-form').submit()">
-                            <option value="all" <?= $currentStatus === 'all' ? 'selected' : '' ?>>All Statuses</option>
-                            <option value="Recent" <?= $currentStatus === 'Recent' ? 'selected' : '' ?>>Recent</option>
-                            <option value="Processing" <?= $currentStatus === 'Processing' ? 'selected' : '' ?>>Processing</option>
-                            <option value="Sorted" <?= $currentStatus === 'Sorted' ? 'selected' : '' ?>>Sorted</option>
-                        </select>
-                        <label for="current-sort">Sort by:</label>
-                        <select id="current-sort" name="current-sort" onchange="document.getElementById('current-filter-form').submit()">
-                            <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>Newest</option>
-                            <option value="oldest" <?= $currentSort === 'oldest' ? 'selected' : '' ?>>Oldest</option>
-                            <option value="highest" <?= $currentSort === 'highest' ? 'selected' : '' ?>>Highest quantity</option>
-                            <option value="lowest" <?= $currentSort === 'lowest' ? 'selected' : '' ?>>Lowest quantity</option>
-                        </select>
-                        <?php if ($searchInv !== '' || $currentDate !== 'all' || $currentMonth !== 'all' || $currentYear !== 'all' || $currentStatus !== 'all' || $currentSort !== 'newest'): ?>
-                        <a href="inventory.php<?= ($searchHistory !== '' || $historyDate !== 'all') ? '?search-history=' . urlencode($searchHistory) . '&history-date=' . urlencode($historyDate) : '' ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;">Clear</a>
-                        <?php endif; ?>
+                            <?php
+                            require_once "php_backend/db.php";
+                            // Fetch the search var value.
+                            $searchInv = trim($_GET['search-inv'] ?? '');
+                            $searchInv = "%{$searchInv}%";
+                            $dateOpts = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY d DESC");
+                            $dateOpts->bindValue(':search', $searchInv);
+                            $dateOpts->execute();
+                            $currentDates = $dateOpts->fetchAll(PDO::FETCH_COLUMN);
+                            $monthOpts = $pdo->prepare("SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') AS m FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY m DESC");
+                            $monthOpts->bindValue(':search', $searchInv);
+                            $monthOpts->execute();
+                            $currentMonths = $monthOpts->fetchAll(PDO::FETCH_COLUMN);
+                            $yearOpts = $pdo->prepare("SELECT DISTINCT YEAR(created_at) AS y FROM inventory WHERE status != 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search) ORDER BY y DESC");
+                            $yearOpts->bindValue(':search', $searchInv);
+                            $yearOpts->execute();
+                            $currentYears = $yearOpts->fetchAll(PDO::FETCH_COLUMN);
+                            ?>
+                            <i class="fa-solid fa-filter"></i>
+                            <label for="current-date-filter">Filter by Date:</label>
+                            <select id="current-date-filter" name="current-date"
+                                onchange="document.getElementById('current-filter-form').submit()">
+                                <option value="all" <?= $currentDate === 'all' ? 'selected' : '' ?>>All Dates</option>
+                                <?php foreach ($currentDates as $d): ?>
+                                    <option value="<?= htmlspecialchars($d) ?>" <?= $currentDate === $d ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($d) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="current-month-filter">Month:</label>
+                            <select id="current-month-filter" name="current-month"
+                                onchange="document.getElementById('current-filter-form').submit()">
+                                <option value="all" <?= $currentMonth === 'all' ? 'selected' : '' ?>>All Months</option>
+                                <?php foreach ($currentMonths as $m): ?>
+                                    <option value="<?= htmlspecialchars($m) ?>" <?= $currentMonth === $m ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars(date('M Y', strtotime($m . '-01'))) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="current-year-filter">Year:</label>
+                            <select id="current-year-filter" name="current-year"
+                                onchange="document.getElementById('current-filter-form').submit()">
+                                <option value="all" <?= $currentYear === 'all' ? 'selected' : '' ?>>All Years</option>
+                                <?php foreach ($currentYears as $y): ?>
+                                    <option value="<?= htmlspecialchars($y) ?>" <?= (string) $currentYear === (string) $y ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($y) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="current-status-filter">Status:</label>
+                            <select id="current-status-filter" name="current-status"
+                                onchange="document.getElementById('current-filter-form').submit()">
+                                <option value="all" <?= $currentStatus === 'all' ? 'selected' : '' ?>>All Statuses
+                                </option>
+                                <option value="Recent" <?= $currentStatus === 'Recent' ? 'selected' : '' ?>>Recent
+                                </option>
+                                <option value="Processing" <?= $currentStatus === 'Processing' ? 'selected' : '' ?>>
+                                    Processing</option>
+                                <option value="Sorted" <?= $currentStatus === 'Sorted' ? 'selected' : '' ?>>Sorted
+                                </option>
+                            </select>
+                            <label for="current-sort">Sort by:</label>
+                            <select id="current-sort" name="current-sort"
+                                onchange="document.getElementById('current-filter-form').submit()">
+                                <option value="newest" <?= $currentSort === 'newest' ? 'selected' : '' ?>>Newest
+                                </option>
+                                <option value="oldest" <?= $currentSort === 'oldest' ? 'selected' : '' ?>>Oldest
+                                </option>
+                                <option value="highest" <?= $currentSort === 'highest' ? 'selected' : '' ?>>Highest
+                                    quantity</option>
+                                <option value="lowest" <?= $currentSort === 'lowest' ? 'selected' : '' ?>>Lowest
+                                    quantity</option>
+                            </select>
+                            <?php if ($searchInv !== '' || $currentDate !== 'all' || $currentMonth !== 'all' || $currentYear !== 'all' || $currentStatus !== 'all' || $currentSort !== 'newest'): ?>
+                                <a href="inventory.php<?= ($searchHistory !== '' || $historyDate !== 'all') ? '?search-history=' . urlencode($searchHistory) . '&history-date=' . urlencode($historyDate) : '' ?>"
+                                    class="btn-secondary" style="text-decoration:none;padding:6px 10px;">Clear</a>
+                            <?php endif; ?>
                         </form>
                     </div>
                 </div>
             </div>
 
             <div class="card-body">
-               <?php
-            require_once "php_backend/db.php";
-            $stmt = $pdo->prepare("SELECT prod_id FROM inventory");
-            $stmt->execute();
-            $prod = $stmt->fetch();
-
-            if (!$prod): ?>
-                <p class="section-desc">No current supplies found in the inventory.</p>
-                <button type="button" class="btn-primary" command="show-modal" commandfor="item-diag">
-                    <i class="fa-solid fa-plus"></i> Add Item
-                </button>                
-            <?php else: ?>
                 <?php
-                $currentSql = "SELECT * FROM inventory WHERE status != 'Completed'";
-                $currentParams = [];
-                if ($searchInv !== '') {
-                    $currentSql .= " AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search)";
-                    $currentParams[':search'] = "%" . $searchInv . "%";
-                }
-                if ($currentDate !== 'all') {
-                    $currentSql .= " AND DATE(created_at) = :cdate";
-                    $currentParams[':cdate'] = $currentDate;
-                }
-                if ($currentMonth !== 'all') {
-                    $currentSql .= " AND DATE_FORMAT(created_at, '%Y-%m') = :cmonth";
-                    $currentParams[':cmonth'] = $currentMonth;
-                }
-                if ($currentYear !== 'all') {
-                    $currentSql .= " AND YEAR(created_at) = :cyear";
-                    $currentParams[':cyear'] = $currentYear;
-                }
-                if ($currentStatus !== 'all') {
-                    $currentSql .= " AND status = :cstatus";
-                    $currentParams[':cstatus'] = $currentStatus;
-                }
-                $sortMap = ['newest' => 'created_at DESC', 'oldest' => 'created_at ASC', 'highest' => 'quantity DESC', 'lowest' => 'quantity ASC'];
-                $currentSql .= " ORDER BY " . $sortMap[$currentSort];
-                $stmt = $pdo->prepare($currentSql);
-                foreach ($currentParams as $key => $val) {
-                    $stmt->bindValue($key, $val);
-                }
+                require_once "php_backend/db.php";
+                $stmt = $pdo->prepare("SELECT prod_id FROM inventory");
+                $stmt->execute();
+                $prod = $stmt->fetch();
+
+                if (!$prod): ?>
+                    <p class="section-desc">No current supplies found in the inventory.</p>
+                    <button type="button" class="btn-primary" command="show-modal" commandfor="item-diag">
+                        <i class="fa-solid fa-plus"></i> Add Item
+                    </button>
+                <?php else: ?>
+                    <?php
+                    $currentSql = "SELECT * FROM inventory WHERE status != 'Completed'";
+                    $currentParams = [];
+                    if ($searchInv !== '') {
+                        $currentSql .= " AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search)";
+                        $currentParams[':search'] = "%" . $searchInv . "%";
+                    }
+                    if ($currentDate !== 'all') {
+                        $currentSql .= " AND DATE(created_at) = :cdate";
+                        $currentParams[':cdate'] = $currentDate;
+                    }
+                    if ($currentMonth !== 'all') {
+                        $currentSql .= " AND DATE_FORMAT(created_at, '%Y-%m') = :cmonth";
+                        $currentParams[':cmonth'] = $currentMonth;
+                    }
+                    if ($currentYear !== 'all') {
+                        $currentSql .= " AND YEAR(created_at) = :cyear";
+                        $currentParams[':cyear'] = $currentYear;
+                    }
+                    if ($currentStatus !== 'all') {
+                        $currentSql .= " AND status = :cstatus";
+                        $currentParams[':cstatus'] = $currentStatus;
+                    }
+                    $sortMap = ['newest' => 'created_at DESC', 'oldest' => 'created_at ASC', 'highest' => 'quantity DESC', 'lowest' => 'quantity ASC'];
+                    $currentSql .= " ORDER BY " . $sortMap[$currentSort];
+                    $stmt = $pdo->prepare($currentSql);
+                    foreach ($currentParams as $key => $val) {
+                        $stmt->bindValue($key, $val);
+                    }
                     ?>
                     <div class="table-responsive">
                         <table class="data-table">
@@ -597,30 +818,32 @@ if ($chGran === 'weekly') {
                                     echo "<tr><td colspan='6'>" . ($searchInv !== '' ? "No items match '" . htmlspecialchars($searchInv) . "'." : "No current supplies found.") . "</td></tr>";
                                 endif;
                                 foreach ($invRows as $row):
-                                ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($row['prod_id']) ?></td>
-                                    <td><?= htmlspecialchars($row['product']) ?></td>
-                                    <td class="stock-level-cell"><strong><?= htmlspecialchars($row['quantity']) ?></strong></td>
-                                    <td><?= htmlspecialchars($row['unit']) ?></td>
-                                    <td><?= htmlspecialchars($row['created_at'])?></td>
-                                    <td class="action-cell">
-                                        <button type="button" class="btn-table-action edit-btn" 
-                                            data-id="<?=htmlspecialchars($row['prod_id'])?>"
-                                            data-name="<?=htmlspecialchars($row['product'])?>"
-                                            data-qty="<?=htmlspecialchars($row['quantity'])?>"
-                                            data-metric="<?=htmlspecialchars($row['unit'])?>"
-                                            data-status="<?=htmlspecialchars($row['status'])?>"
-                                            data-description="<?=htmlspecialchars($row['description'] ?? '')?>">
-                                            <?=$row['status']?>
-                                        </button>
-                                        <button type="button" class="btn-table-details details"
-                                            data-detail="<?= htmlspecialchars($row['description'] ?? '') ?>"
-                                            data-type="<?=htmlspecialchars($row['unit'])?>">
-                                            Details <!--Detail button in the actions, Action Details button-->
-                                        </button>
-                                    </td>
-                                </tr>
+                                    ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($row['prod_id']) ?></td>
+                                        <td><?= htmlspecialchars($row['product']) ?></td>
+                                        <td class="stock-level-cell"><strong><?= htmlspecialchars($row['quantity']) ?></strong>
+                                        </td>
+                                        <td><?= htmlspecialchars($row['unit']) ?></td>
+                                        <td><?= htmlspecialchars($row['created_at']) ?></td>
+                                        <td class="action-cell">
+                                            <button type="button" class="btn-table-action edit-btn"
+                                                data-id="<?= htmlspecialchars($row['prod_id']) ?>"
+                                                data-name="<?= htmlspecialchars($row['product']) ?>"
+                                                data-qty="<?= htmlspecialchars($row['quantity']) ?>"
+                                                data-metric="<?= htmlspecialchars($row['unit']) ?>"
+                                                data-status="<?= htmlspecialchars($row['status']) ?>"
+                                                data-description="<?= htmlspecialchars($row['description'] ?? '') ?>">
+                                                <?= $row['status'] ?>
+                                            </button>
+                                            <button type="button" class="btn-table-details details"
+                                                data-detail="<?= htmlspecialchars($row['description'] ?? '') ?>"
+                                                data-type="<?= htmlspecialchars($row['unit']) ?>">
+                                                Details
+                                                <!--Detail button in the actions, Action Details button-->
+                                            </button>
+                                        </td>
+                                    </tr>
                                 <?php endforeach; ?>
                             </tbody>
                         </table>
@@ -629,19 +852,19 @@ if ($chGran === 'weekly') {
             </div>
         </div> <!-- Card 1 END -->
 
-        <!-- Card 2: Receive New Supplies -->
+        <!-- Card 2: Transactions -->
         <?php if ($prod): ?>
-        <div class="content-card">
-            <div class="card-header">
-                <h2><i class="fa-solid fa-circle-plus"></i> Receive New Supplies</h2>
+            <div class="content-card">
+                <div class="card-header">
+                    <h2><i class="fa-solid fa-circle-plus"></i>Transactions</h2>
+                </div>
+                <div class="card-body">
+                    <p class="section-desc">Record stock-out batches.</p>
+                    <button type="button" class="btn-primary" command="show-modal" commandfor="item-diag">
+                        <i class="fa-solid fa-plus"></i> Select Item
+                    </button>
+                </div>
             </div>
-            <div class="card-body">
-                <p class="section-desc">Record incoming stock batches into the inventory system.</p>
-                <button type="button" class="btn-primary" command="show-modal" commandfor="item-diag">
-                    <i class="fa-solid fa-plus"></i> Add Item
-                </button>
-            </div>
-        </div>
         <?php endif; ?>
         <div class="content-card">
             <div class="card-header">
@@ -671,31 +894,33 @@ if ($chGran === 'weekly') {
                             for ($m = 0; $m < 3; $m++) {
                                 $moveDay = date('Y-m-d', strtotime("today -$m days"));
                                 $moveStmtIn->execute([':d' => $moveDay]);
-                                $moveIn = (int)$moveStmtIn->fetchColumn();
+                                $moveIn = (int) $moveStmtIn->fetchColumn();
                                 $moveStmtOut->execute([':d' => $moveDay]);
-                                $moveOut = (int)$moveStmtOut->fetchColumn();
+                                $moveOut = (int) $moveStmtOut->fetchColumn();
                                 if ($moveIn != 0 || $moveOut != 0) {
                                     $moveDays[] = ['day' => $moveDay, 'net' => $moveIn - $moveOut];
                                 }
                             }
-                            $moveBal = (int)$total_current;
+                            $moveBal = (int) $total_current;
                             foreach ($moveDays as &$move) {
                                 $move['bal'] = $moveBal;
                                 $moveBal = $moveBal - $move['net'];
                             }
                             unset($move);
                             if (empty($moveDays)):
-                            ?>
-                            <tr><td colspan="4">No recent movements.</td></tr>
+                                ?>
+                                <tr>
+                                    <td colspan="4">No recent movements.</td>
+                                </tr>
                             <?php else: ?>
-                            <?php foreach ($moveDays as $move): ?>
-                            <tr>
-                                <td><?= date('M d', strtotime($move['day'])) ?></td>
-                                <td><?= $move['net'] >= 0 ? 'Production' : 'Stock-Out' ?></td>
-                                <td><?= ($move['net'] >= 0 ? '+' : '') . $move['net'] ?></td>
-                                <td><?= htmlspecialchars($move['bal']) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
+                                <?php foreach ($moveDays as $move): ?>
+                                    <tr>
+                                        <td><?= date('M d', strtotime($move['day'])) ?></td>
+                                        <td><?= $move['net'] >= 0 ? 'Production' : 'Stock-Out' ?></td>
+                                        <td><?= ($move['net'] >= 0 ? '+' : '') . $move['net'] ?></td>
+                                        <td><?= htmlspecialchars($move['bal']) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -710,112 +935,132 @@ if ($chGran === 'weekly') {
                 <div class="card-filter">
                     <div class="search-bar">
                         <form method="GET" action="inventory.php" id="history-filter-form">
-                        <?php if (trim($_GET['search-inv'] ?? '') !== ''): ?>
-                        <input type="hidden" name="search-inv" value="<?= htmlspecialchars(trim($_GET['search-inv'] ?? '')) ?>">
-                        <?php endif; ?>
-                        <?php if ($currentDate !== 'all'): ?>
-                        <input type="hidden" name="current-date" value="<?= htmlspecialchars($currentDate) ?>">
-                        <?php endif; ?>
-                        <?php if ($chGran !== 'daily'): ?>
-                        <input type="hidden" name="ch-gran" value="<?= htmlspecialchars($chGran) ?>">
-                        <?php endif; ?>
-                        <?php if ($chN != 7): ?>
-                        <input type="hidden" name="ch-n" value="<?= htmlspecialchars($chN) ?>">
-                        <?php endif; ?>
-                        <?php if ($chGran === 'custom'): ?>
-                        <input type="hidden" name="ch-from" value="<?= htmlspecialchars($chRangeStart) ?>">
-                        <input type="hidden" name="ch-to" value="<?= htmlspecialchars($chRangeEnd) ?>">
-                        <?php endif; ?>
-                        <input type="text" id="search-box-history" placeholder="Search..." name="search-history" value="<?= htmlspecialchars($searchHistory) ?>"><!--Set the value of search bar for consistent memory-->
-                        <button type="submit" id="search-btn-history"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            <?php if (trim($_GET['search-inv'] ?? '') !== ''): ?>
+                                <input type="hidden" name="search-inv"
+                                    value="<?= htmlspecialchars(trim($_GET['search-inv'] ?? '')) ?>">
+                            <?php endif; ?>
+                            <?php if ($currentDate !== 'all'): ?>
+                                <input type="hidden" name="current-date" value="<?= htmlspecialchars($currentDate) ?>">
+                            <?php endif; ?>
+                            <?php if ($chGran !== 'daily'): ?>
+                                <input type="hidden" name="ch-gran" value="<?= htmlspecialchars($chGran) ?>">
+                            <?php endif; ?>
+                            <?php if ($chN != 7): ?>
+                                <input type="hidden" name="ch-n" value="<?= htmlspecialchars($chN) ?>">
+                            <?php endif; ?>
+                            <?php if ($chGran === 'custom'): ?>
+                                <input type="hidden" name="ch-from" value="<?= htmlspecialchars($chRangeStart) ?>">
+                                <input type="hidden" name="ch-to" value="<?= htmlspecialchars($chRangeEnd) ?>">
+                            <?php endif; ?>
+                            <input type="text" id="search-box-history" placeholder="Search..." name="search-history"
+                                value="<?= htmlspecialchars($searchHistory) ?>">
+                            <!--Set the value of search bar for consistent memory-->
+                            <button type="submit" id="search-btn-history"><i
+                                    class="fa-solid fa-magnifying-glass"></i></button>
 
-                        <?php
-                        require_once "php_backend/db.php";
-                        // Fetch the search var value.
-                        $historyLike = "%{$searchHistory}%";
-                        $dateOpts = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY d DESC");
-                        $dateOpts->bindValue(':search', $historyLike);
-                        $dateOpts->execute();
-                        $historyDates = $dateOpts->fetchAll(PDO::FETCH_COLUMN);
-                        $monthOpts = $pdo->prepare("SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') AS m FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY m DESC");
-                        $monthOpts->bindValue(':search', $historyLike);
-                        $monthOpts->execute();
-                        $historyMonths = $monthOpts->fetchAll(PDO::FETCH_COLUMN);
-                        $yearOpts = $pdo->prepare("SELECT DISTINCT YEAR(created_at) AS y FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY y DESC");
-                        $yearOpts->bindValue(':search', $historyLike);
-                        $yearOpts->execute();
-                        $historyYears = $yearOpts->fetchAll(PDO::FETCH_COLUMN);
-                        ?>
-                        <i class="fa-solid fa-filter"></i>
-                        <label for="history-date-filter">Filter by Date:</label>
-                        <select id="history-date-filter" name="history-date" onchange="document.getElementById('history-filter-form').submit()">
-                            <option value="all" <?= $historyDate === 'all' ? 'selected' : '' ?>>All Dates</option>
-                            <?php foreach ($historyDates as $d): ?>
-                            <option value="<?= htmlspecialchars($d) ?>" <?= $historyDate === $d ? 'selected' : '' ?>><?= htmlspecialchars($d) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="history-month-filter">Month:</label>
-                        <select id="history-month-filter" name="history-month" onchange="document.getElementById('history-filter-form').submit()">
-                            <option value="all" <?= $historyMonth === 'all' ? 'selected' : '' ?>>All Months</option>
-                            <?php foreach ($historyMonths as $m): ?>
-                            <option value="<?= htmlspecialchars($m) ?>" <?= $historyMonth === $m ? 'selected' : '' ?>><?= htmlspecialchars(date('M Y', strtotime($m . '-01'))) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="history-year-filter">Year:</label>
-                        <select id="history-year-filter" name="history-year" onchange="document.getElementById('history-filter-form').submit()">
-                            <option value="all" <?= $historyYear === 'all' ? 'selected' : '' ?>>All Years</option>
-                            <?php foreach ($historyYears as $y): ?>
-                            <option value="<?= htmlspecialchars($y) ?>" <?= (string)$historyYear === (string)$y ? 'selected' : '' ?>><?= htmlspecialchars($y) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                        <label for="history-sort">Sort by:</label>
-                        <select id="history-sort" name="history-sort" onchange="document.getElementById('history-filter-form').submit()">
-                            <option value="newest" <?= $historySort === 'newest' ? 'selected' : '' ?>>Newest</option>
-                            <option value="oldest" <?= $historySort === 'oldest' ? 'selected' : '' ?>>Oldest</option>
-                            <option value="highest" <?= $historySort === 'highest' ? 'selected' : '' ?>>Highest quantity</option>
-                            <option value="lowest" <?= $historySort === 'lowest' ? 'selected' : '' ?>>Lowest quantity</option>
-                        </select>
-                        <?php if ($searchHistory !== '' || $historyDate !== 'all' || $historyMonth !== 'all' || $historyYear !== 'all' || $historySort !== 'newest'): ?>
-                        <a href="inventory.php<?= (trim($_GET['search-inv'] ?? '') !== '' || $currentDate !== 'all') ? '?search-inv=' . urlencode(trim($_GET['search-inv'] ?? '')) . '&current-date=' . urlencode($currentDate) : '' ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;">Clear</a>
-                        <?php endif; ?>
+                            <?php
+                            require_once "php_backend/db.php";
+                            // Fetch the search var value.
+                            $historyLike = "%{$searchHistory}%";
+                            $dateOpts = $pdo->prepare("SELECT DISTINCT DATE(created_at) AS d FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY d DESC");
+                            $dateOpts->bindValue(':search', $historyLike);
+                            $dateOpts->execute();
+                            $historyDates = $dateOpts->fetchAll(PDO::FETCH_COLUMN);
+                            $monthOpts = $pdo->prepare("SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m') AS m FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY m DESC");
+                            $monthOpts->bindValue(':search', $historyLike);
+                            $monthOpts->execute();
+                            $historyMonths = $monthOpts->fetchAll(PDO::FETCH_COLUMN);
+                            $yearOpts = $pdo->prepare("SELECT DISTINCT YEAR(created_at) AS y FROM inventory WHERE status = 'Completed' AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search) ORDER BY y DESC");
+                            $yearOpts->bindValue(':search', $historyLike);
+                            $yearOpts->execute();
+                            $historyYears = $yearOpts->fetchAll(PDO::FETCH_COLUMN);
+                            ?>
+                            <i class="fa-solid fa-filter"></i>
+                            <label for="history-date-filter">Filter by Date:</label>
+                            <select id="history-date-filter" name="history-date"
+                                onchange="document.getElementById('history-filter-form').submit()">
+                                <option value="all" <?= $historyDate === 'all' ? 'selected' : '' ?>>All Dates</option>
+                                <?php foreach ($historyDates as $d): ?>
+                                    <option value="<?= htmlspecialchars($d) ?>" <?= $historyDate === $d ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($d) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="history-month-filter">Month:</label>
+                            <select id="history-month-filter" name="history-month"
+                                onchange="document.getElementById('history-filter-form').submit()">
+                                <option value="all" <?= $historyMonth === 'all' ? 'selected' : '' ?>>All Months</option>
+                                <?php foreach ($historyMonths as $m): ?>
+                                    <option value="<?= htmlspecialchars($m) ?>" <?= $historyMonth === $m ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars(date('M Y', strtotime($m . '-01'))) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="history-year-filter">Year:</label>
+                            <select id="history-year-filter" name="history-year"
+                                onchange="document.getElementById('history-filter-form').submit()">
+                                <option value="all" <?= $historyYear === 'all' ? 'selected' : '' ?>>All Years</option>
+                                <?php foreach ($historyYears as $y): ?>
+                                    <option value="<?= htmlspecialchars($y) ?>" <?= (string) $historyYear === (string) $y ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($y) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <label for="history-sort">Sort by:</label>
+                            <select id="history-sort" name="history-sort"
+                                onchange="document.getElementById('history-filter-form').submit()">
+                                <option value="newest" <?= $historySort === 'newest' ? 'selected' : '' ?>>Newest
+                                </option>
+                                <option value="oldest" <?= $historySort === 'oldest' ? 'selected' : '' ?>>Oldest
+                                </option>
+                                <option value="highest" <?= $historySort === 'highest' ? 'selected' : '' ?>>Highest
+                                    quantity</option>
+                                <option value="lowest" <?= $historySort === 'lowest' ? 'selected' : '' ?>>Lowest
+                                    quantity</option>
+                            </select>
+                            <?php if ($searchHistory !== '' || $historyDate !== 'all' || $historyMonth !== 'all' || $historyYear !== 'all' || $historySort !== 'newest'): ?>
+                                <a href="inventory.php<?= (trim($_GET['search-inv'] ?? '') !== '' || $currentDate !== 'all') ? '?search-inv=' . urlencode(trim($_GET['search-inv'] ?? '')) . '&current-date=' . urlencode($currentDate) : '' ?>"
+                                    class="btn-secondary" style="text-decoration:none;padding:6px 10px;">Clear</a>
+                            <?php endif; ?>
                         </form>
                     </div>
                 </div>
-            </div> <!--Content Card End, History END-->
+            </div>
+            <!--Content Card End, History END-->
             <div class="card-body">
                 <?php
                 require_once "php_backend/db.php";
 
-                if(!$prod):
-                ?>
-                <p class="section-desc">No completed items yet.</p>
+                if (!$prod):
+                    ?>
+                    <p class="section-desc">No completed items yet.</p>
                 <?php else: ?>
-                <?php
-                $historySql = "SELECT * FROM inventory WHERE status = 'Completed'";
-                $historyParams = [];
-                if ($searchHistory !== '') {
-                    $historySql .= " AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search)";
-                    $historyParams[':search'] = "%" . $searchHistory . "%";
-                }
-                if ($historyDate !== 'all') {
-                    $historySql .= " AND DATE(created_at) = :hdate";
-                    $historyParams[':hdate'] = $historyDate;
-                }
-                if ($historyMonth !== 'all') {
-                    $historySql .= " AND DATE_FORMAT(created_at, '%Y-%m') = :hmonth";
-                    $historyParams[':hmonth'] = $historyMonth;
-                }
-                if ($historyYear !== 'all') {
-                    $historySql .= " AND YEAR(created_at) = :hyear";
-                    $historyParams[':hyear'] = $historyYear;
-                }
-                $historySortMap = ['newest' => 'created_at DESC', 'oldest' => 'created_at ASC', 'highest' => 'quantity DESC', 'lowest' => 'quantity ASC'];
-                $historySql .= " ORDER BY " . $historySortMap[$historySort];
-                $stmt = $pdo->prepare($historySql);
-                foreach ($historyParams as $key => $val) {
-                    $stmt->bindValue($key, $val);
-                }
-                ?>
+                    <?php
+                    $historySql = "SELECT * FROM inventory WHERE status = 'Completed'";
+                    $historyParams = [];
+                    if ($searchHistory !== '') {
+                        $historySql .= " AND (CAST(prod_id AS CHAR) LIKE :search OR product LIKE :search OR description LIKE :search OR unit LIKE :search OR status LIKE :search)";
+                        $historyParams[':search'] = "%" . $searchHistory . "%";
+                    }
+                    if ($historyDate !== 'all') {
+                        $historySql .= " AND DATE(created_at) = :hdate";
+                        $historyParams[':hdate'] = $historyDate;
+                    }
+                    if ($historyMonth !== 'all') {
+                        $historySql .= " AND DATE_FORMAT(created_at, '%Y-%m') = :hmonth";
+                        $historyParams[':hmonth'] = $historyMonth;
+                    }
+                    if ($historyYear !== 'all') {
+                        $historySql .= " AND YEAR(created_at) = :hyear";
+                        $historyParams[':hyear'] = $historyYear;
+                    }
+                    $historySortMap = ['newest' => 'created_at DESC', 'oldest' => 'created_at ASC', 'highest' => 'quantity DESC', 'lowest' => 'quantity ASC'];
+                    $historySql .= " ORDER BY " . $historySortMap[$historySort];
+                    $stmt = $pdo->prepare($historySql);
+                    foreach ($historyParams as $key => $val) {
+                        $stmt->bindValue($key, $val);
+                    }
+                    ?>
                 </div>
                 <div class="table-responsive">
                     <table class="data-table" id="historyTable">
@@ -841,26 +1086,32 @@ if ($chGran === 'weekly') {
                                 echo "<tr><td colspan='6'>Search query not found!</td></tr>";
                             }
                             if (!$historyError && empty($historyRows)):
-                            ?>
-                            <tr><td colspan="6"><?= ($searchHistory !== '' || $historyDate !== 'all') ? "No history matches your search/filter." : "No completed items yet." ?></td></tr>
+                                ?>
+                                <tr>
+                                    <td colspan="6">
+                                        <?= ($searchHistory !== '' || $historyDate !== 'all') ? "No history matches your search/filter." : "No completed items yet." ?>
+                                    </td>
+                                </tr>
                             <?php else: ?>
-                            <?php foreach ($historyRows as $h_row): ?>
-                            <tr>
-                                <td><?= htmlspecialchars($h_row['product']) ?></td>
-                                <td><strong><?= htmlspecialchars($h_row['quantity']) ?></strong></td>
-                                <td><?= htmlspecialchars($h_row['unit']) ?></td>
-                                <td><span class="badge-status badge-completed"><?= htmlspecialchars($h_row['status']) ?></span></td>
-                                <td><?= htmlspecialchars($h_row['description'] ?: 'None') ?></td>
-                                <td><?= htmlspecialchars($h_row['created_at']) ?></td>
-                            </tr>
-                            <?php endforeach; ?>
+                                <?php foreach ($historyRows as $h_row): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($h_row['product']) ?></td>
+                                        <td><strong><?= htmlspecialchars($h_row['quantity']) ?></strong></td>
+                                        <td><?= htmlspecialchars($h_row['unit']) ?></td>
+                                        <td><span
+                                                class="badge-status badge-completed"><?= htmlspecialchars($h_row['status']) ?></span>
+                                        </td>
+                                        <td><?= htmlspecialchars($h_row['description'] ?: 'None') ?></td>
+                                        <td><?= htmlspecialchars($h_row['created_at']) ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
-                <?php endif; ?>
-            </div>
-        </div> <!-- Card 3 END -->
+            <?php endif; ?>
+        </div>
+    </div> <!-- Card 3 END -->
     </div> <!-- Inventorypage END -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
@@ -869,92 +1120,92 @@ if ($chGran === 'weekly') {
                     const target = e.currentTarget;
                     const id = target.dataset.id;
                     const name = target.dataset.name;
-                    const qty = target.dataset.qty;
                     const metric = target.dataset.metric;
                     const status = target.dataset.status;
                     const description = target.dataset.description;
                     console.log(status);
-                    
+
                     document.getElementById('edit_id').value = id;
                     document.getElementById('edit_name').value = name;
-                    document.getElementById('edit_quantity').value = qty;
                     document.getElementById('edit_metric').value = metric;
                     document.getElementById('status_edit').value = status;
 
                     /*
-                    // Check status if value or custom
-                    const customInput = document.getElementById('status-custom');
-                    const statusSelect = document.getElementById('stat');
-
-                    if (status === 'Recent' || status === 'Processing' || status === 'Sorted' || status === 'Completed') {
-                        statusSelect.value = status;
-                        customInput.style.display = 'none';
-                        customInput.value = '';
-                    } else {
-                        // Custom status
-                        statusSelect.value = 'custom';
-                        customInput.style.display = 'inline-block';
-                        customInput.value = status;
-                    }*/
+                                    // Check status if value or custom
+                                    const customInput = document.getElementById('status-custom');
+                                    const statusSelect = document.getElementById('stat');
                     
+                                    if (status === 'Recent' || status === 'Processing' || status === 'Sorted' || status === 'Completed') {
+                                        statusSelect.value = status;
+                                        customInput.style.display = 'none';
+                                        customInput.value = '';
+                                    } else {
+                                        // Custom status
+                                        statusSelect.value = 'custom';
+                                        customInput.style.display = 'inline-block';
+                                        customInput.value = status;
+                                    }*/
+
                     document.getElementById('edit-diag').showModal();
-                    document.querySelector('#edit-diag .desc').value = description;                
+                    document.querySelector('#edit-diag .desc').value = description;
                 });
             });
 
             /* Dropdown change for edit dialog - Custom Value removed
-            const stat = document.getElementById('stat');
-            if (stat) {
-                stat.addEventListener("change", (e) => {
-                    const customInput = document.getElementById('status-custom');
-                    if (e.target.value === 'custom') {
-                        customInput.style.display = 'inline-block';
-                        customInput.focus();
-                    } else {
-                        customInput.style.display = 'none';
-                        customInput.value = '';
-                    }
-                });
-            }
-           
-            
-            // dropdown change for insert dialog
-            const statInsert = document.getElementById('stat-insert');
-            if (statInsert) {
-                statInsert.addEventListener('change', (e) => {
-                    const customInput = document.getElementById('status-custom-insert');
-                    if (e.target.value === 'custom') {
-                        customInput.style.display = 'inline-block';
-                        customInput.focus();
-                    } else {
-                        customInput.style.display = 'none';
-                        customInput.value = '';
-                    }
-});
-            }*/
-        
-        // Show feedback dialog on redirect (?success=1 / ?error=1, e.g. after Save Goal):
-        <?php if ($feedbackMessage): ?>
-        document.getElementById('message').textContent = <?= json_encode($feedbackMessage) ?>;
-        document.getElementById('feedback-diag').showModal();
-        <?php endif; ?>
-
-        // Show feedback dialog on Detail:
-        const details = document.querySelectorAll('.details');
-        details.forEach((link) => {
-            link.addEventListener("click", (e) => {
-                const detail = e.currentTarget.dataset.detail;
-                const type = e.currentTarget.dataset.type;
-                //console.log(company);
-                if(detail)
-                document.getElementById('message').innerHTML = "<h3>Info: </h3>" + "<p>" + detail + "</p>";
-                else
-                document.getElementById('message').textContent = "No description";
-
-                document.getElementById('feedback-diag').showModal();
+                        const stat = document.getElementById('stat');
+                        if (stat) {
+                            stat.addEventListener("change", (e) => {
+                                const customInput = document.getElementById('status-custom');
+                                if (e.target.value === 'custom') {
+                                    customInput.style.display = 'inline-block';
+                                    customInput.focus();
+                                } else {
+                                    customInput.style.display = 'none';
+                                    customInput.value = '';
+                                }
+                            });
+                        }
+                       
+                        
+                        // dropdown change for insert dialog
+                        const statInsert = document.getElementById('stat-insert');
+                        if (statInsert) {
+                            statInsert.addEventListener('change', (e) => {
+                                const customInput = document.getElementById('status-custom-insert');
+                                if (e.target.value === 'custom') {
+                                    customInput.style.display = 'inline-block';
+                                    customInput.focus();
+                                } else {
+                                    customInput.style.display = 'none';
+                                    customInput.value = '';
+                                }
             });
-        });
+                        }*/
+
+            // Show feedback dialog on redirect (?success=1 / ?error=1, e.g. after Save Goal):
+            <?php if ($feedbackMessage): ?>
+                document.getElementById('message').textContent = <?= json_encode($feedbackMessage) ?>;
+                document.getElementById('feedback-diag').showModal();
+            <?php endif; ?>
+
+            // Show feedback dialog on Detail:
+            const details = document.querySelectorAll('.details');
+            details.forEach((link) => {
+                link.addEventListener("click", (e) => {
+                    const detail = e.currentTarget.dataset.detail;
+                    const type = e.currentTarget.dataset.type;
+                    //console.log(company);
+                    if (detail)
+                        document.getElementById('message').innerHTML = "<h3>Info: </h3>" + "<p>" +
+                            detail + "</p>";
+                    else
+                        document.getElementById('message').textContent = "No description";
+
+                    document.getElementById('feedback-diag').showModal();
+                });
+            });
         }); // DOMContentLoaded - date filter is server-side (history-date GET param), no JS filtering needed
     </script>
 </body>
+
 </html>

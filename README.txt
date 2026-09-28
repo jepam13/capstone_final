@@ -32,12 +32,16 @@ CREATE TABLE accounts (
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active'
 );
 
+CREATE TABLE total (
+    total_stock INT
+)
+
 CREATE TABLE inventory (
     prod_id VARCHAR(15) PRIMARY KEY,
     product VARCHAR(30) NOT NULL,
     quantity INT UNSIGNED NOT NULL DEFAULT 0,
     unit VARCHAR(10) NOT NULL,
-    status VARCHAR(50) DEFAULT 'Recent',
+    status VARCHAR(50) DEFAULT 'Ongoing',
     description TINYTEXT,
     stock_in DECIMAL(10,2),
     stock_out DECIMAL(10,2),
@@ -52,7 +56,7 @@ CREATE TABLE production (
     item VARCHAR(15),
     quantity DECIMAL(10,2) NOT NULL,
     unit VARCHAR(10) NOT NULL,
-    status VARCHAR(30) DEFAULT 'Recent',
+    status VARCHAR(30) DEFAULT 'Ongoing',
     receiver VARCHAR(50),
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL
 );

@@ -29,6 +29,7 @@ if (!in_array($repStatus, ['all', 'Recent', 'Ongoing', 'Completed'], true)) {
 }
 
 // Forecast CSV export must stream before any HTML output (headers).
+// Seasonal weekday forecast: last 90 days in, next 7 days out.
 if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
     require_once "php_backend/db.php";
     require_once "php_backend/forecast_lib.php";
@@ -37,11 +38,7 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
     if (!in_array($csvProd, $csvProdOpts, true)) {
         $csvProd = $csvProdOpts[0] ?? 'Vermicast';
     }
-    $csvPeriod = $_GET['fc-period'] ?? '30';
-    if (!in_array($csvPeriod, ['7', '14', '30'], true)) {
-        $csvPeriod = '30';
-    }
-    $csvSteps = (int)$csvPeriod;
+    $csvSteps = 7;
     $csvToday = date('Y-m-d');
     $csvTailStmt = $pdo->prepare("SELECT DATE(updated_at) AS day, SUM(quantity) AS q FROM inventory WHERE status = 'Completed' AND product = :prod AND updated_at >= :start GROUP BY DATE(updated_at)");
     $csvTailStmt->execute([':prod' => $csvProd, ':start' => date('Y-m-d', strtotime($csvToday . ' -6 days')) . ' 00:00:00']);
@@ -55,7 +52,7 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
         $csvTailDays[] = $ctd;
         $ctd = date('Y-m-d', strtotime($ctd . ' +1 day'));
     }
-    $csvRes = runForecast($pdo, $csvProd, 365, $csvSteps, 'auto');
+    $csvRes = runForecast($pdo, $csvProd);
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="forecast-' . $csvProd . '-' . $csvSteps . 'd.csv"');
     echo "Date,Actual Stock-Out,Forecast\n";
@@ -805,11 +802,7 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
         if (!in_array($fcProd, $fcProdOpts, true)) {
             $fcProd = $fcProdOpts[0] ?? 'Vermicast';
         }
-        $fcPeriod = $_POST['fc-period'] ?? $_GET['fc-period'] ?? '30';
-        if (!in_array($fcPeriod, ['7', '14', '30'], true)) {
-            $fcPeriod = '30';
-        }
-        $fcSteps = (int)$fcPeriod;
+        $fcSteps = 7;
         // Historical availability label for the selected product.
         $fcRangeStmt = $pdo->prepare("SELECT MIN(updated_at) AS mn, MAX(updated_at) AS mx FROM inventory WHERE status = 'Completed' AND product = :prod");
         $fcRangeStmt->execute([':prod' => $fcProd]);
@@ -836,15 +829,15 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
         $fcResult = null;
         $fcHistWarn = false;
         if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['fc-generate'])) {
-            $fcResult = runForecast($pdo, $fcProd, 365, $fcSteps, 'auto');
+            $fcResult = runForecast($pdo, $fcProd);
             if (!$fcResult['thin']) {
                 try {
                     $fcHist = $pdo->prepare("INSERT INTO forecasting_history (product, period_days, alpha, total_demand, daily_json, method, range_days) VALUES (:prod, :days, :alpha, :total, :daily, :method, :range)");
-                    $fcHist->execute([':prod' => $fcProd, ':days' => $fcSteps, ':alpha' => 0.3, ':total' => array_sum($fcResult['forecast']), ':daily' => json_encode($fcResult['forecast']), ':method' => $fcResult['method'], ':range' => 365]);
+                    $fcHist->execute([':prod' => $fcProd, ':days' => $fcSteps, ':alpha' => 0, ':total' => array_sum($fcResult['forecast']), ':daily' => json_encode($fcResult['forecast']), ':method' => $fcResult['method'], ':range' => 90]);
                 } catch (Exception $e) {
                     try {
                         $fcHist = $pdo->prepare("INSERT INTO forecasting_history (product, period_days, alpha, total_demand, daily_json) VALUES (:prod, :days, :alpha, :total, :daily)");
-                        $fcHist->execute([':prod' => $fcProd, ':days' => $fcSteps, ':alpha' => 0.3, ':total' => array_sum($fcResult['forecast']), ':daily' => json_encode($fcResult['forecast'])]);
+                        $fcHist->execute([':prod' => $fcProd, ':days' => $fcSteps, ':alpha' => 0, ':total' => array_sum($fcResult['forecast']), ':daily' => json_encode($fcResult['forecast'])]);
                     } catch (Exception $e2) {
                         $fcHistWarn = true;
                     }
@@ -870,12 +863,7 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
                             <?php endforeach; ?>
                         </select>
                         <span class="section-desc" style="margin:0;">Historical: <strong><?= htmlspecialchars($fcRangeLabel) ?></strong></span>
-                        <label for="fc-period">Forecast:</label>
-                        <select id="fc-period" name="fc-period" required>
-                            <option value="7" <?= $fcPeriod === '7' ? 'selected' : '' ?>>Next 7 Days</option>
-                            <option value="14" <?= $fcPeriod === '14' ? 'selected' : '' ?>>Next 14 Days</option>
-                            <option value="30" <?= $fcPeriod === '30' ? 'selected' : '' ?>>Next 30 Days</option>
-                        </select>
+                        <span class="section-desc" style="margin:0;">Seasonal Moving Average (weekday, 90-day) · Next 7 Days · Needs 90+ days history</span>
                         <input type="hidden" name="fc-generate" value="1">
                         <button type="submit" class="btn-primary" style="padding:7px 16px;">Generate</button>
                     </form>
@@ -958,8 +946,8 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
             <div class="card-header card-header-flex">
                 <h2><i class="fa-solid fa-calendar-days"></i> Forecast Results</h2>
                 <div class="card-filter">
-                    <a href="php_backend/report_pdf.php?branch=forecast&fc-product=<?= urlencode($fcProd) ?>&fc-period=<?= urlencode($fcPeriod) ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;"><i class="fa-solid fa-file-pdf"></i> Save as PDF</a>
-                    <a href="reports.php?tab=forecast&export=csv&fc-product=<?= urlencode($fcProd) ?>&fc-period=<?= urlencode($fcPeriod) ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
+                    <a href="php_backend/report_pdf.php?branch=forecast&fc-product=<?= urlencode($fcProd) ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;"><i class="fa-solid fa-file-pdf"></i> Save as PDF</a>
+                    <a href="reports.php?tab=forecast&export=csv&fc-product=<?= urlencode($fcProd) ?>" class="btn-secondary" style="text-decoration:none;padding:6px 10px;"><i class="fa-solid fa-file-excel"></i> Export Excel</a>
                 </div>
             </div>
             <div class="card-body">
@@ -1003,7 +991,7 @@ if ($tab === 'forecast' && ($_GET['export'] ?? '') === 'csv') {
         <?php elseif ($fcResult !== null && $fcResult['thin']): ?>
         <div class="content-card">
             <div class="card-body">
-                <p class="section-desc">Not enough history yet - forecasts unlock after about 15 days of sales for this product.</p>
+                <p class="section-desc">Not enough history yet - forecasts need 90+ days of sales for this product.</p>
             </div>
         </div>
         <?php endif; ?>

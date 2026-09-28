@@ -42,6 +42,9 @@
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-card: 0 1px 30px 0 rgba(0, 0, 0, 0.08), 0 1px 10px -1px rgba(0, 0, 0, 0.04);
     --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.25), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+
+    /* Base type scale — all rem text follows this. PC bump lives in the media query at the bottom. */
+    font-size: 16px;
 }
 /*
 dashboardpage
@@ -52,10 +55,12 @@ productionpage
 reportspage
 salespage
 userspage
+
 */
-.dashboardpage, .forecastingpage, .inventorypage, .login-page, .productionpage, .reportspage, .salespage, .userspage {
+.dashboardpage, .forecastingpage, .inventorypage, .login-page, .productionpage, .reportspage, .salespage, .userspage, .historypage {
     grid-area: main;
     overflow-y: auto;
+    background-size: cover;
 }
 
 /*
@@ -76,6 +81,7 @@ README
 - Dashboard
 - Inventory
 - Forecasting
+- History Page
 - Reports
 - User Page
 - Global Cards
@@ -86,8 +92,7 @@ body {
     display: grid;
     padding: 0;
     margin: 0;
-    background: url("assets/img/background1.jpg") no-repeat center center fixed;
-    background-size: cover;
+    background-color: var(--color-bg-page);
     grid-template-columns: var(--sidebar-width) 1fr;
     grid-template-rows: 100vh;
     grid-template-areas: 
@@ -240,9 +245,7 @@ dialog .dialog-actions {
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-card);
-    background: rgba(255, 253, 247, 0.88);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--color-bg-card);
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -290,7 +293,7 @@ General & Dashboard Notifications
     box-sizing: border-box;
     transition: all 0.3s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     color: var(--color-text-main);
 }
@@ -326,7 +329,7 @@ General & Dashboard Notifications
     color: #15803d !important;
 }
 
-/* Brown / Low Notification */
+/* Brown / Low Notification  */
 #dashboard-notif.notif-low,
 #dashboard-notif[style*="color: brown"],
 #notif.notif-low,
@@ -767,7 +770,7 @@ Login Page END
     height: auto;
     display: block;
     margin: 16px auto 14px;
-    background: rgba(255, 255, 255, 0.92);
+    background: #ffffff;
     padding: 6px 12px;
     border-radius: 6px;
     box-sizing: border-box;
@@ -893,9 +896,7 @@ Forecasting Page START
     gap: 24px;
     margin-bottom: 18px;
     padding: 14px 18px;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-md);
     font-size: 0.95rem;
@@ -921,9 +922,7 @@ Forecasting Page START
 .forecastingpage .forecast-meta-info {
     margin-bottom: 16px;
     padding: 10px 14px;
-    background: rgba(241, 245, 249, 0.85);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-md);
     font-size: 0.85rem;
@@ -953,13 +952,35 @@ Forecasting Page START
 Forecasting Page END
 */
 
+/*History Page*/
+.historypage {
+    margin: 0;
+
+}
+
+.historypage .page-header {
+    margin: 0;
+}
+
+.historypage .content-card {
+    margin: 10px 28px 10px 28px;
+}
+
+.historypage .section-desc {
+    background: green;
+    margin: 0 0 14px;
+    font-size: 0.9rem;
+    color: white;
+    padding: 5px;
+}
+
+
+
 /*
 Page Header & Unified Page Container START
 */
 .page-header {
-    background: rgba(255, 253, 247, 0.88);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--color-bg-card);
     padding: 18px 28px;
     border-bottom: 1px solid var(--color-border);
     margin: 0 -28px 24px -28px;
@@ -980,9 +1001,7 @@ Page Header & Unified Page Container START
 .userspage,
 .forecastingpage {
     padding: 0 28px 40px;
-    background: rgba(246, 241, 231, 0.78);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
+    background: var(--color-bg-page);
     box-sizing: border-box;
 }
 
@@ -1018,9 +1037,7 @@ Page Header & Unified Page Container START
     gap: 24px;
     margin-bottom: 18px;
     padding: 14px 18px;
-    background: rgba(255, 255, 255, 0.82);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-md);
     font-size: 0.95rem;
@@ -1051,9 +1068,7 @@ Page Header & Unified Page Container START
 }
 
 .report-cards .stat-card {
-    background: rgba(255, 253, 247, 0.88);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     padding: 20px;
@@ -1077,20 +1092,19 @@ Page Header & Unified Page Container START
 }
 
 .content-card {
-    background: rgba(255, 253, 247, 0.90);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-card);
     margin-bottom: 24px;
     overflow: hidden;
+    min-height: 280px;
 }
 
 .card-header {
     padding: 16px 24px;
     border-bottom: 1px solid var(--color-border-subtle);
-    background: rgba(255, 253, 247, 0.82);
+    background: var(--color-bg-card);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -1135,11 +1149,6 @@ Page Header & Unified Page Container START
     padding: 20px 24px;
 }
 
-.section-desc {
-    margin: 0 0 14px;
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-}
 
 /* Form Styles */
 .form-row {
@@ -1393,6 +1402,13 @@ dialog .dialog-actions {
 /*
 Responsive Media Queries
 */
+/* PC view: bigger base text — every rem-sized font scales up with this one number. */
+@media (min-width: 1024px) {
+    :root {
+        font-size: 18px;
+    }
+}
+
 @media (max-width: 768px) {
     :root {
         --sidebar-width: 100%;

@@ -3,10 +3,10 @@ require_once "php_backend/session.php";
 
 requireRole(['admin']);
 
-// Hybrid forecaster lives in php_backend/forecast_lib.php (shared with reports.php).
+// Moving Average forecaster lives in php_backend/forecast_lib.php (shared with reports.php).
 require_once "php_backend/forecast_lib.php";
 
-// (fitHolt and fitHW live in forecast_lib.php too.)
+// Shared seasonal lib (90 days in, 7 days out).
 
 // Fertilizer types available for forecasting.
 $prodOpts = $pdo->query("SELECT DISTINCT product FROM inventory ORDER BY product")->fetchAll(PDO::FETCH_COLUMN);
@@ -15,24 +15,9 @@ $selProduct = $_POST['product'] ?? ($prodOpts[0] ?? 'Vermicast');
 if (!in_array($selProduct, $prodOpts, true)) {
     $selProduct = $prodOpts[0] ?? 'Vermicast';
 }
-$selPeriod = $_POST['period'] ?? '14';
-if (!in_array($selPeriod, ['7', '14', '30'], true)) {
-    $selPeriod = '14';
-}
-$steps = (int)$selPeriod;
-
-// Input range: how many past days feed the models (default 365).
-$selRange = $_POST['range'] ?? '90';
-if (!in_array($selRange, ['30', '90', '180', '365'], true)) {
-    $selRange = '90';
-}
-$rangeDays = (int)$selRange;
-
-// Method: auto-select by best MSE, or one arm forced (guarded by eligibility).
-$selMethod = $_POST['method'] ?? 'holt';
-if (!in_array($selMethod, ['auto', 'reg', 'holt', 'hw'], true)) {
-    $selMethod = 'holt';
-}
+// Fixed setup: last 90 days in, next 7 days out (seasonal weekday average).
+$rangeDays = 90;
+$steps = 7;
 
 // Available history range label for the selected product.
 $rangeStmt = $pdo->prepare("SELECT MIN(updated_at) AS mn, MAX(updated_at) AS mx FROM inventory WHERE status = 'Completed' AND product = :prod");
@@ -52,11 +37,9 @@ $thinNotice = false;
 if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['generate'])) {
     $today = date('Y-m-d');
 
-    $alpha = 0.3;
-    $res = runForecast($pdo, $selProduct, $rangeDays, $steps, $selMethod);
+    $res = runForecast($pdo, $selProduct);
     $forecast = $res['forecast'];
     $method = $res['method'];
-    $downgradeNote = $res['note'];
     $thinNotice = $res['thin'];
     $total = array_sum($forecast);
 
@@ -66,11 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['generate'])) {
     if (!$thinNotice) {
     try {
         $hist = $pdo->prepare("INSERT INTO forecasting_history (product, period_days, alpha, total_demand, daily_json, method, range_days) VALUES (:prod, :days, :alpha, :total, :daily, :method, :range)");
-        $hist->execute([':prod' => $selProduct, ':days' => $steps, ':alpha' => $alpha, ':total' => $total, ':daily' => json_encode($forecast), ':method' => $method, ':range' => $rangeDays]);
+        $hist->execute([':prod' => $selProduct, ':days' => $steps, ':alpha' => 0, ':total' => $total, ':daily' => json_encode($forecast), ':method' => $method, ':range' => $rangeDays]);
     } catch (Exception $e) {
         try {
             $hist = $pdo->prepare("INSERT INTO forecasting_history (product, period_days, alpha, total_demand, daily_json) VALUES (:prod, :days, :alpha, :total, :daily)");
-            $hist->execute([':prod' => $selProduct, ':days' => $steps, ':alpha' => $alpha, ':total' => $total, ':daily' => json_encode($forecast)]);
+            $hist->execute([':prod' => $selProduct, ':days' => $steps, ':alpha' => 0, ':total' => $total, ':daily' => json_encode($forecast)]);
         } catch (Exception $e2) {
             $histWarn = true;
         }
@@ -109,99 +92,26 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['generate'])) {
                             <option value="<?= htmlspecialchars($p) ?>" <?= $selProduct === $p ? 'selected' : '' ?>><?= htmlspecialchars($p) ?></option>
                             <?php endforeach; ?>
                         </select>
-                    <div class="form-group" style="margin-bottom: 16px;">
-                        <label for="fmethod">Forecasting Method</label>
-                        <select id="fmethod" name="method" required>
-                            <option value="auto" <?= $selMethod === 'auto' ? 'selected' : '' ?>>Auto-select (Recommended)</option>
-                            <option value="reg" <?= $selMethod === 'reg' ? 'selected' : '' ?>>Linear Regression</option>
-                            <option value="holt" <?= $selMethod === 'holt' ? 'selected' : '' ?>>Holt's Linear Trend (needs 14+ days)</option>
-                            <option value="hw" <?= $selMethod === 'hw' ? 'selected' : '' ?>>Holt-Winters Seasonal, period 7 (needs 56+ days)</option>
-                        </select>
                     </div>
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <div class="section-desc" id="method-best" style="margin: 0;"></div>
-                    </div>
-                    </div>
-                    <details>
-                        <summary>Advanced</summary>
                     <div class="form-group" style="margin-bottom: 12px;">
                         <label>Historical Data</label>
-                        <div><strong><?= htmlspecialchars($rangeLabel) ?></strong> (last <?= htmlspecialchars($selRange) ?> days evaluated)</div>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label for="range">Input Range</label>
-                        <select id="range" name="range" required>
-                            <option value="30" <?= $selRange === '30' ? 'selected' : '' ?>>30 Days</option>
-                            <option value="90" <?= $selRange === '90' ? 'selected' : '' ?>>90 Days</option>
-                            <option value="180" <?= $selRange === '180' ? 'selected' : '' ?>>180 Days</option>
-                            <option value="365" <?= $selRange === '365' ? 'selected' : '' ?>>365 Days</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label for="period">Forecast Period</label>
-                        <select id="period" name="period" required>
-                            <option value="7" <?= $selPeriod === '7' ? 'selected' : '' ?>>7 Days</option>
-                            <option value="14" <?= $selPeriod === '14' ? 'selected' : '' ?>>14 Days</option>
-                            <option value="30" <?= $selPeriod === '30' ? 'selected' : '' ?>>30 Days</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <div class="section-desc" style="margin: 0;">7 days: reliable · 14 days: fine if steady · 30 days: rough direction only.</div>
+                        <div><strong><?= htmlspecialchars($rangeLabel) ?></strong> (last 90 days evaluated)</div>
                     </div>
                     <div class="form-group" style="margin-bottom: 16px;">
                         <label>Method</label>
-                        <div><?= $forecast !== null ? htmlspecialchars($method) . ($downgradeNote !== '' ? ' - ' . htmlspecialchars($downgradeNote) : '') : 'Hybrid: steady trends use Linear Regression, shifting trends use Holt\'s Linear Trend, weekly rhythms use Seasonal Holt-Winters (arm auto-selected by best fit)' ?></div>
+                        <div>Seasonal Moving Average (weekday, 90-day): each of the next 7 days predicts its weekday's average (e.g. Monday = average of the last ~13 Mondays), so the weekly rise/reduce rhythm shows. Needs 90+ days of history.</div>
                     </div>
-                    <input type="hidden" name="generate" value="1">                      
-                    </details>
+                    <input type="hidden" name="generate" value="1">
 
                     <button type="submit" class="btn-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Generate Forecast</button>
                 </form>
-                <script>
-                // Method-first UX: each arm shows and applies its best settings.
-                // HW-seasonal also needs 56+ days of input - disabled for short ranges.
-                // The server re-checks everything; this only guides the picker.
-                (function () {
-                    var rangeSel = document.getElementById('range');
-                    var periodSel = document.getElementById('period');
-                    var methodSel = document.getElementById('fmethod');
-                    var bestNote = document.getElementById('method-best');
-                    var methodBest = {
-                        reg: { range: '30', period: '7', text: 'Best for Linear Regression: 30 days input · 7 days forecast.' },
-                        holt: { range: '90', period: '14', text: "Best for Holt's Linear Trend: 90 days input · 14 days forecast." },
-                        hw: { range: '365', period: '7', text: 'Best for Seasonal Holt-Winters: 365 days input · 7 days forecast.' }
-                    };
-                    function syncMethodOpts() {
-                        var hwOpt = methodSel.querySelector('option[value="hw"]');
-                        var ok = parseInt(rangeSel.value, 10) >= 56;
-                        hwOpt.disabled = !ok;
-                        if (!ok && methodSel.value === 'hw') {
-                            methodSel.value = 'auto';
-                        }
-                    }
-                    function syncBest() {
-                        var best = methodBest[methodSel.value];
-                        if (best) {
-                            rangeSel.value = best.range;
-                            periodSel.value = best.period;
-                            bestNote.textContent = best.text;
-                        } else {
-                            bestNote.textContent = 'Auto-select fits every eligible arm and runs the best fit.';
-                        }
-                        syncMethodOpts();
-                    }
-                    rangeSel.addEventListener('change', syncMethodOpts);
-                    methodSel.addEventListener('change', syncBest);
-                    syncBest();
-                })();
-                </script>
             </div>
         </div>
 
         <?php if ($thinNotice): ?>
         <div class="content-card">
             <div class="card-body">
-                <p class="section-desc">Not enough history yet - forecasts unlock after about 15 days of sales for this product.</p>
+                <p class="section-desc">Not enough history yet - forecasts need 90+ days of sales for this product.</p>
             </div>
         </div>
         <?php endif; ?>
@@ -210,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['generate'])) {
         $total = array_sum($forecast);
         $avg = $forecast ? round($total / count($forecast), 1) : 0;
         $diff = $currentStock - $total;
-        // Chart: last 30 history days (solid) + forecast (dashed).
+        // Chart: last 30 history days actuals + 7-day forecast.
         $tailStmt = $pdo->prepare("SELECT DATE(updated_at) AS day, SUM(quantity) AS total_qty FROM inventory WHERE status = 'Completed' AND product = :prod AND updated_at >= :start GROUP BY DATE(updated_at)");
         $tailStmt->execute([':prod' => $selProduct, ':start' => date('Y-m-d', strtotime($today . ' -29 days')) . ' 00:00:00']);
         $tailMap = [];
