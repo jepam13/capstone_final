@@ -769,7 +769,7 @@ Login Page END
     width: 80%;
     height: auto;
     display: block;
-    margin: 16px auto 14px;
+    margin: 8px auto 7px;
     background: #ffffff;
     padding: 6px 12px;
     border-radius: 6px;
@@ -1352,7 +1352,6 @@ textarea:focus {
 
 /* Dialog Styling */
 dialog#item-diag,
-dialog#edit-diag,
 dialog#feedback-diag, 
 dialog#status-diag {
     padding: 0;
@@ -1405,7 +1404,7 @@ Responsive Media Queries
 /* PC view: bigger base text — every rem-sized font scales up with this one number. */
 @media (min-width: 1024px) {
     :root {
-        font-size: 18px;
+        font-size: 22px;
     }
 }
 
