@@ -6,7 +6,9 @@ requireRole(['admin', 'manager']);
 // single-row `total` ledger, floored at 0. Inventory rows are fixed
 // production-tracking records and are never touched here.
 if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['quantity'])) {
-    $entered = (int)($_POST['quantity'] ?? 0);
+    $unit = $_POST['unit'];
+    $entered = round((float)($_POST['quantity'] ?? 0), 2);
+    if($unit == 'KG') $entered = round($entered / 50, 2);
     $receiver = trim($_POST['description'] ?? '');
     if ($entered <= 0) {
         header("Location: ../inventory.php?error=1");
@@ -15,16 +17,16 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['quantity'])) {
 
     $stmtTotal = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
     $stmtTotal->execute();
-    $current = (int)($stmtTotal->fetchColumn() ?? 0);
+    $current = (float)($stmtTotal->fetchColumn() ?? 0);
 
-    $deduct = min($entered, $current);
+    $deduct = round(min($entered, $current), 2);
     if ($deduct <= 0) {
         header("Location: ../inventory.php?error=1");
         exit;
     }
 
     $updT = $pdo->prepare("UPDATE total SET total_stock = :total");
-    $updT->execute([':total' => $current - $deduct]);
+    $updT->execute([':total' => round($current - $deduct, 2)]);
 
     $hist = $pdo->prepare("INSERT INTO history (user, action, ref_id, product, quantity, unit) VALUES (:user, 'Stock Deducted', :ref, :prod, :quan, :unit)");
     $hist->execute([

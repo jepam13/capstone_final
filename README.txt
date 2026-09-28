@@ -27,13 +27,14 @@ CREATE TABLE accounts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     role VARCHAR(30) UNIQUE,
     user VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100),
     pass VARCHAR(255),
     admin BOOLEAN UNIQUE DEFAULT NULL,
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active'
 );
 
 CREATE TABLE total (
-    total_stock INT NOT NULL DEFAULT 0
+    total_stock DECIMAL(10,2) NOT NULL DEFAULT 0.00
 );
 
 CREATE TABLE inventory (

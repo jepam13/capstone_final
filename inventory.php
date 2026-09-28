@@ -126,17 +126,23 @@ if ($chGran === 'weekly') {
             <h3><i class="fa-solid fa-pen-to-square"></i>Update/Edit Total Stock</h3>
         </div>
 
+
         <?php
         $totalStmt = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
         $totalStmt->execute();
-        $dialogTotal = (int) ($totalStmt->fetchColumn() ?? 0);
+        $dialogTotal = round((float)($totalStmt->fetchColumn() ?? 0), 2);
         ?>
         <div class="dialog-body">
             <form method="POST" action="php_backend/insertItem.php">
                 <div class="form-group" style="margin-bottom: 12px;">
                     <div style="margin-bottom: 8px;">Total Stock: <strong><?= $dialogTotal ?> Sacks</strong></div>
                     <label>Amount to Deduct: </label>
-                    <input type="number" name="quantity" min="1" max="<?= $dialogTotal ?>" required>
+                    <input type="number" name="quantity" min="0.01" step="0.01" max="<?= $dialogTotal ?>" required>
+                    <select name="unit" required>
+                        <option value="">Select Unit</option>
+                        <option value="KG">KG</option>
+                        <option value="Sacks">Sacks</option>
+                    </select>
                     <div style="margin-top: 4px; font-size: 0.85rem; color: #666;">Amount to remove (Sacks).
                         Cannot exceed the current total stock.</div>
                 </div>
@@ -151,6 +157,7 @@ if ($chGran === 'weekly') {
                     <button type="button" class="btn-secondary" command="close" commandfor="item-diag">Cancel</button>
                     <button type="submit" class="btn-primary"><i class="fa-solid fa-minus"></i> Deduct Stock</button>
                 </div>
+
             </form>
         </div>
     </dialog> <!-- Update/Edit Total Stock Dialog END -->
@@ -178,7 +185,8 @@ if ($chGran === 'weekly') {
 
         $stmt_stock = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
         $stmt_stock->execute();
-        $total_current = (int) ($stmt_stock->fetchColumn() ?? 0);
+        $total_current = round((float) ($stmt_stock->fetchColumn() ?? 0), 2);
+        $totalFmt = rtrim(rtrim(number_format($total_current, 2, '.', ''), '0'), '.');
         ?>
         <div id="notif" class="notif">
             <i class="fa-solid fa-circle-info"></i>
@@ -191,27 +199,27 @@ if ($chGran === 'weekly') {
                     notif.className = 'notif notif-green';
                     notif.style.color = '#15803d';
                     notif.innerHTML =
-                        '<i class="fa-solid fa-circle-check"></i> Status: Good (<?= (int) $total_current ?> Sacks Available)';
+                        '<i class="fa-solid fa-circle-check"></i> Status: Good (<?= $totalFmt ?> Sacks Available)';
                 <?php elseif ($total_current >= 50): ?>
                     notif.className = 'notif notif-good';
                     notif.style.color = '#15803d';
                     notif.innerHTML =
-                        '<i class="fa-solid fa-circle-info"></i> Status: Sufficient (<?= (int) $total_current ?> Sacks Available)';
+                        '<i class="fa-solid fa-circle-info"></i> Status: Sufficient (<?= $totalFmt ?> Sacks Available)';
                 <?php elseif ($total_current >= 20): ?>
                     notif.className = 'notif notif-good';
                     notif.style.color = '#15803d';
                     notif.innerHTML =
-                        '<i class="fa-solid fa-circle-info"></i> Status: OK (<?= (int) $total_current ?> Sacks Available)';
+                        '<i class="fa-solid fa-circle-info"></i> Status: OK (<?= $totalFmt ?> Sacks Available)';
                 <?php elseif ($total_current >= 8): ?>
                     notif.className = 'notif notif-orange';
                     notif.style.color = 'orange';
                     notif.innerHTML =
-                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Low Stock (<?= (int) $total_current ?> Sacks Left)';
+                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Low Stock (<?= $totalFmt ?> Sacks Left)';
                 <?php elseif ($total_current > 0): ?>
                     notif.className = 'notif notif-red';
                     notif.style.color = 'red';
                     notif.innerHTML =
-                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Critically Low Stock! (<?= (int) $total_current ?> Sacks Left)';
+                        '<i class="fa-solid fa-triangle-exclamation"></i> Status: Critically Low Stock! (<?= $totalFmt ?> Sacks Left)';
                 <?php else: ?>
                     notif.className = 'notif notif-red';
                     notif.style.color = 'red';
@@ -222,29 +230,47 @@ if ($chGran === 'weekly') {
         <!--Inventory head Summary-->
 
         <div class="info-cards">
-            <div class="stat-card">
-                <h2>Total Stock</h2>
-                <h3><?= $total_current ?? 0 ?> Sacks</h3>
+            <div class="stat-card stat-card-green">
+                <h2>Current Stock</h2>
+                <h3><?= $totalFmt ?> Sacks</h3>
+                <div class="stat-sub">Available now</div>
+                <div class="stat-desc">Real-time inventory balance</div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card stat-card-blue">
                 <?php
-                $stmt_produced = $pdo->prepare("SELECT SUM(quantity) FROM production");
+                $stmt_produced = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM production WHERE status = 'Completed' AND YEAR(updated_at) = YEAR(CURDATE()) AND MONTH(updated_at) = MONTH(CURDATE())");
                 $stmt_produced->execute();
                 $total_produced = $stmt_produced->fetchColumn();
                 ?>
                 <h2>Total Produced</h2>
-                <h3><?= $total_produced ?? 0 ?> Sacks</h3>
+                <h3><?= rtrim(rtrim(number_format((float) ($total_produced ?? 0), 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                <div class="stat-sub">This month</div>
+                <div class="stat-desc">Production records within selected period</div>
             </div>
 
-            <div class="stat-card">
+            <div class="stat-card stat-card-amber">
                 <?php
-                $stmt_stockout = $pdo->prepare("SELECT SUM(quantity) FROM inventory WHERE status = 'Completed'");
-                $stmt_stockout->execute();
-                $total_stockout = $stmt_stockout->fetchColumn();
+                $stmt_released = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM history WHERE action IN ('Stock Deducted', 'Stock-Out Recorded') AND YEAR(created_at) = YEAR(CURDATE()) AND MONTH(created_at) = MONTH(CURDATE())");
+                $stmt_released->execute();
+                $total_released = $stmt_released->fetchColumn();
                 ?>
-                <h2>Total Stock-out</h2>
-                <h3><?= $total_stockout ?> Sacks</h3>
+                <h2>Total Released</h2>
+                <h3><?= rtrim(rtrim(number_format((float) ($total_released ?? 0), 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                <div class="stat-sub">This month</div>
+                <div class="stat-desc">Quantity issued or sold</div>
+            </div>
+
+            <div class="stat-card stat-card-purple">
+                <?php
+                $stmt_today = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM production WHERE status = 'Completed' AND DATE(updated_at) = CURDATE()");
+                $stmt_today->execute();
+                $total_today = $stmt_today->fetchColumn();
+                ?>
+                <h2>Production Today</h2>
+                <h3><?= rtrim(rtrim(number_format((float) ($total_today ?? 0), 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                <div class="stat-sub">Today</div>
+                <div class="stat-desc">Today's production output</div>
             </div>
         </div>
         <!--Inventory head Summary END-->
@@ -562,10 +588,10 @@ if ($chGran === 'weekly') {
                                 <tr>
                                     <th>Item ID</th>
                                     <th>Name</th>
-                                    <th>Stock-In</th>
+                                    <th>Quantity</th>
                                     <th>Unit</th>
+                                    <th>Description</th>
                                     <th>Date Created</th>
-                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -590,15 +616,8 @@ if ($chGran === 'weekly') {
                                         <td class="stock-level-cell"><strong><?= htmlspecialchars($row['quantity']) ?></strong>
                                         </td>
                                         <td><?= htmlspecialchars($row['unit']) ?></td>
+                                        <td class="record-note"><?= htmlspecialchars($row['description'] ?: 'None') ?></td>
                                         <td><?= htmlspecialchars($row['created_at']) ?></td>
-                                        <td class="action-cell">
-                                            <button type="button" class="btn-table-details details"
-                                                data-detail="<?= htmlspecialchars($row['description'] ?? '') ?>"
-                                                data-type="<?= htmlspecialchars($row['unit']) ?>">
-                                                Details
-                                                <!--Detail button in the actions, Action Details button-->
-                                            </button>
-                                        </td>
                                     </tr>
                                 <?php endforeach; ?>
                             </tbody>

@@ -66,6 +66,10 @@ if (!in_array($userSort, ['newest', 'oldest'], true)) {
                     </div>
                     <div class="form-row">
                         <div class="form-group">
+                            <label for="fullname">Name</label>
+                            <input type="text" id="fullname" name="fullname" placeholder="Enter full name" required>
+                        </div>
+                        <div class="form-group">
                             <label for="role">Role</label>
                             <select id="role" name="role" required>
                                 <option value="staff">Production Staff</option>
@@ -120,6 +124,7 @@ if (!in_array($userSort, ['newest', 'oldest'], true)) {
                         <thead>
                             <tr>
                                 <th>Username</th>
+                                <th>Name</th>
                                 <th>Role</th>
                                 <th>Status</th>
                                 <th>Action</th>
@@ -130,13 +135,13 @@ if (!in_array($userSort, ['newest', 'oldest'], true)) {
                         require_once "php_backend/db.php";
 
                         // Admins are hidden by default; picking the Admin role shows them.
-                        $userSql = "SELECT id, role, user, admin, status FROM accounts WHERE 1 = 1";
+                        $userSql = "SELECT id, role, user, name, admin, status FROM accounts WHERE 1 = 1";
                         $userParams = [];
                         if ($filterRole !== 'admin') {
                             $userSql .= " AND (admin IS NULL OR admin != 1)";
                         }
                         if ($searchUser !== '') {
-                            $userSql .= " AND user LIKE :search";
+                            $userSql .= " AND (user LIKE :search OR name LIKE :search)";
                             $userParams[':search'] = "%" . $searchUser . "%";
                         }
                         if ($filterRole !== 'all') {
@@ -161,6 +166,7 @@ if (!in_array($userSort, ['newest', 'oldest'], true)) {
                         ?>
                         <tr>
                             <td><strong><?=htmlspecialchars($user['user'])?></strong></td>
+                            <td><?=htmlspecialchars($user['name'] ?? '')?></td>
                             <td><span class="badge-type"><?=htmlspecialchars(ucfirst($user['role']))?></span></td>
                             <td>
                                 <span class="badge-status <?=$user['status'] == 'active' ? 'badge-completed' : 'badge-disabled'?>">
@@ -185,7 +191,7 @@ if (!in_array($userSort, ['newest', 'oldest'], true)) {
                         <?php
                         }
                         if (!$hasUsers) {
-                            echo "<tr><td colspan='4' style='text-align: center; color: var(--color-text-muted); padding: 24px;'>No users found</td></tr>";
+                            echo "<tr><td colspan='5' style='text-align: center; color: var(--color-text-muted); padding: 24px;'>No users found</td></tr>";
                         }
                         ?>
                         </tbody>

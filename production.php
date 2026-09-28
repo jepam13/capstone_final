@@ -90,6 +90,27 @@ if (!in_array($prodSort, ['newest', 'oldest', 'highest', 'lowest'], true)) {
                         <button type="submit" class="btn-primary">Create Production Batch</button>
                     </div>
                 </form>
+                <?php
+                // Recommended production amount from the latest forecast:
+                // forecast demand minus current total stock, floored at 0.
+                $recText = 'No forecast yet - generate one in Forecasting to get a recommendation.';
+                try {
+                    $recFc = $pdo->prepare("SELECT total_demand, product, created_at FROM forecasting_history ORDER BY id DESC LIMIT 1");
+                    $recFc->execute();
+                    $recRow = $recFc->fetch(PDO::FETCH_ASSOC);
+                    if ($recRow) {
+                        $recStock = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
+                        $recStock->execute();
+                        $recAvail = round((float) ($recStock->fetchColumn() ?? 0), 2);
+                        $recQty = max(0, round((float) $recRow['total_demand'] - $recAvail, 2));
+                        $recFmt = function ($v) { return rtrim(rtrim(number_format((float) $v, 2, '.', ''), '0'), '.'); };
+                        $recText = 'Recommended: <strong>' . $recFmt($recQty) . ' Sacks</strong> of ' . htmlspecialchars($recRow['product']) . ' (forecast ' . $recFmt($recRow['total_demand']) . ' &minus; stock ' . $recFmt($recAvail) . ', as of ' . htmlspecialchars(date('M d, Y', strtotime($recRow['created_at']))) . ').';
+                    }
+                } catch (Exception $e) {
+                    $recText = 'Recommendation unavailable (forecast data missing).';
+                }
+                ?>
+                <p class="section-desc" style="margin-top: 14px;"><i class="fa-solid fa-lightbulb"></i> <?= $recText ?></p>
             </div>
         </div> <!-- Card 1 END -->
         <?php endif; ?>
@@ -439,7 +460,7 @@ if (!in_array($prodSort, ['newest', 'oldest', 'highest', 'lowest'], true)) {
                 </div>
                 <div class="form-group" id="quantityFieldGroup" style="margin-bottom: 16px; display: none;">
                     <label for="quantityIn">Quantity Produced (Sacks)</label>
-                    <input type="number" id="quantityIn" name="quantityIn" min="0" required>
+                    <input type="number" id="quantityIn" name="quantityIn" min="0" step="0.01" required>
                 </div>
                 <input type="hidden" name="id">
                 <div class="dialog-actions">

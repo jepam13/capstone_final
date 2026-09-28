@@ -6,23 +6,15 @@ if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['status'])) {
     $status = $_POST['status'] ?? '';
     $id = $_POST['id'] ?? '';
     $quantity = $_POST['quantityIn'];
-    $receiver = "Receiver: ";
 
     // production
     $stmt = $pdo->prepare("UPDATE production SET status = :status, updated_at = NOW() WHERE production_id = :id");
     $stmt->bindValue(':status', $status);
     $stmt->bindValue(':id', $id);    
 
-    // to inventory. No need to set status for going in inventory must be Recent
-    # Check for duplicate ID
-    $id_num = substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 7);
-    $stmt_id = $pdo->prepare("SELECT prod_id FROM inventory WHERE prod_id = :id");
-    $stmt_id->bindValue(':id', $id_num);
-    $stmt_id->execute();
-    if($stmt_id->fetchColumn()) {
-        // Retry with new ID
-        $id_num = substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 7);
-    }
+    // to inventory. No need to set status for going in inventory must be Recent.
+    // ID RULE: the inventory record keeps the production batch_id, so the
+    // Batch ID (Production History) and Item ID (Inventory) always match.
 
     if($status == "Completed") {
     $stmt_fetch = $pdo->prepare("SELECT batch_id, item, quantity, unit, status, receiver FROM production WHERE production_id = :id");
@@ -31,6 +23,16 @@ if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['status'])) {
 
     // Only append once: skip if already Completed (re-submit would double-count).
     if ($row_fetch && $row_fetch['status'] != 'Completed') {
+        // Same ID end to end: inventory prod_id = production batch_id.
+        $inv_id = $row_fetch['batch_id'];
+        $dup = $pdo->prepare("SELECT prod_id FROM inventory WHERE prod_id = :id");
+        $dup->bindValue(':id', $inv_id);
+        $dup->execute();
+        if ($dup->fetchColumn()) {
+            // Should not happen (guarded above), but never fatal on a PK clash:
+            // keep the batch traceable with a suffixed record id.
+            $inv_id = substr($inv_id . substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 3), 0, 15);
+        }
         // Stamp the produced amount on the batch so Production History shows it
         // (batches are created with quantity 0 until completed).
         $updQ = $pdo->prepare("UPDATE production SET quantity = :q WHERE production_id = :id");
@@ -39,11 +41,11 @@ if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['status'])) {
         $updQ->execute();
 
         $stmt2 = $pdo->prepare("INSERT INTO inventory (prod_id, product, quantity, unit, description, stock_in, created_at) VALUES (:prod_id, :product, :quantity, :unit, :description, :stock_in, NOW())");
-        $stmt2->bindValue(":prod_id", $id_num);
+        $stmt2->bindValue(":prod_id", $inv_id);
         $stmt2->bindValue(":product", $row_fetch['item']);
         $stmt2->bindValue(":quantity", $quantity); // Stock In
         $stmt2->bindValue(":unit", $row_fetch['unit']);
-        $stmt2->bindValue(":description", $receiver . $row_fetch['receiver']);
+        $stmt2->bindValue(":description", 'Batch: ' . $row_fetch['batch_id']);
         $stmt2->bindValue(':stock_in', $quantity);
         $stmt2->execute();
 
@@ -57,12 +59,12 @@ if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['status'])) {
             $stmtTotal->execute();
             $row = $stmtTotal->fetch(PDO::FETCH_ASSOC);
             if ($row) {
-                $newTotal = (int)$row['total_stock'] + $quantity;
+                $newTotal = round((float)$row['total_stock'] + (float)$quantity, 2);
                 $updateTotal = $pdo->prepare("UPDATE total SET total_stock = :total");
                 $updateTotal->execute([':total' => $newTotal]);
             } else {
                 $insertTotal = $pdo->prepare("INSERT INTO total (total_stock) VALUES (:total)");
-                $insertTotal->execute([':total' => $quantity]);
+                $insertTotal->execute([':total' => round((float)$quantity, 2)]);
             }
         } catch (Exception $e) {
             // no total table — nothing to update

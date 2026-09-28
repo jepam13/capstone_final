@@ -73,7 +73,8 @@ $goalData = array_fill(0, count($chartData), $salesGoal);
     $vermi = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
     $vermi->execute();
 
-    $current_vermicast = (int) ($vermi->fetchColumn() ?? 0);
+    $current_vermicast = round((float) ($vermi->fetchColumn() ?? 0), 2);
+    $vermiFmt = rtrim(rtrim(number_format($current_vermicast, 2, '.', ''), '0'), '.');
     ?>
     <div class="dashboardpage">
         <div class="page-header">
@@ -86,42 +87,34 @@ $goalData = array_fill(0, count($chartData), $salesGoal);
             ?>
             <h2>Good <?= $greet ?>, <strong><?= htmlspecialchars($_SESSION['user_name']) ?></strong></h2>
         </div>
-        <h2 id="dashboard-notif">
+        <?php
+        // Stock notice band: no gaps, server-rendered so the logos + icon survive.
+        if ($current_vermicast > 20) {
+            $notifClass = 'notif-green';
+            $notifIcon = 'fa-circle-check';
+            $notifText = "Stocks levels are healthy ({$vermiFmt} Sacks)";
+        } elseif ($current_vermicast >= 10) {
+            $notifClass = 'notif-good';
+            $notifIcon = 'fa-circle-info';
+            $notifText = "Stocks levels are sufficient ({$vermiFmt} Sacks)";
+        } elseif ($current_vermicast >= 5) {
+            $notifClass = 'notif-red';
+            $notifIcon = 'fa-triangle-exclamation';
+            $notifText = "Stocks levels are low ({$vermiFmt} Sacks left)";
+        } elseif ($current_vermicast >= 1) {
+            $notifClass = 'notif-danger';
+            $notifIcon = 'fa-triangle-exclamation';
+            $notifText = "Stocks levels are critically low! ({$vermiFmt} Sacks left)";
+        } else {
+            $notifClass = 'notif-danger';
+            $notifIcon = 'fa-circle-xmark';
+            $notifText = "No stocks!";
+        }
+        ?>
+        <h2 id="dashboard-notif" class="notif <?= $notifClass ?>">
             <img src="assets/img/rutoplogos.png" height="30px">
-
-            <script>
-                let notif = document.getElementById('dashboard-notif');
-            </script>
-            <!-- Stock notficiation dashboard,  -->
-            <?php if ($current_vermicast > 20): ?>
-                <script>
-                    notif = document.getElementById('dashboard-notif');
-                    notif.style.color = 'green';
-                    notif.innerHTML = "Stocks levels are healthy";
-                </script>
-            <?php endif; ?>
-            <?php if ($current_vermicast < 10 && $current_vermicast < 5): ?>
-                <script>
-                    notif = document.getElementById('dashboard-notif');
-                    notif.style.color = 'brown';
-                    notif.innerHTML = "Stocks levels are low";
-                </script>
-            <?php endif; ?>
-            <?php if ($current_vermicast < 4 && $current_vermicast > 0): ?>
-                <script>
-                    notif = document.getElementById('dashboard-notif');
-                    notif.style.color = 'orange';
-                    notif.innerHTML = "Stocks levels are critically low!";
-                </script>
-            <?php endif; ?>
-            <?php if ($current_vermicast < 1): ?>
-                <script>
-                    notif = document.getElementById('dashboard-notif');
-                    notif.style.color = 'red';
-                    notif.innerHTML = "No stocks!";
-                </script>
-            <?php endif; ?>
-
+            <i class="fa-solid <?= $notifIcon ?>"></i>
+            <span><?= htmlspecialchars($notifText) ?></span>
         </h2>
 
         <?php if (isset($_GET['success'])): ?>
@@ -138,7 +131,8 @@ $goalData = array_fill(0, count($chartData), $salesGoal);
         <div class="info-cards">
             <div class="stat-card">
                 <h2>Vermicast Stock</h2>
-                <h2><?= $current_vermicast ?? 0 ?> Sacks</h2>
+                <h3><?= rtrim(rtrim(number_format(($current_vermicast ?? 0) * 50, 2, '.', ''), '0'), '.') ?> KG</h3>
+                <div class="stat-sub"></div>
             </div>
             <div class="stat-card">
                 <h2>Active Batches</h2>

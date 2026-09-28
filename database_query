@@ -88,6 +88,7 @@ CREATE TABLE accounts (
     id INT AUTO_INCREMENT PRIMARY KEY,
     role VARCHAR(30) UNIQUE,
     user VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100),
     pass VARCHAR(255),
     admin BOOLEAN UNIQUE DEFAULT NULL,
     status ENUM('active', 'disabled') NOT NULL DEFAULT 'active'
@@ -184,6 +185,16 @@ ADD updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP N
 -- MIGRATION: align accounts nullability with canonical DDL (2026-09-22):
 ALTER TABLE accounts MODIFY user VARCHAR(50) UNIQUE NOT NULL;
 
+-- MIGRATION: full name of the user, shown in User Management (2026-09-28):
+-- Run this in phpMyAdmin if accounts lacks `name`.
+ALTER TABLE accounts
+ADD name VARCHAR(100);
+
+-- MIGRATION: total_stock allows two decimals (2026-09-28):
+-- Run this in phpMyAdmin if total_stock is still INT.
+ALTER TABLE total
+MODIFY total_stock DECIMAL(10,2) NOT NULL DEFAULT 0.00;
+
 -- NOTES (remaining code mismatches):
 -- 1. FIXED: php_backend/updateBatch.php now updates `WHERE production_id`.
 -- 2. `accounts.role UNIQUE` allows only one staff / one manager total.
@@ -193,5 +204,12 @@ ALTER TABLE accounts MODIFY user VARCHAR(50) UNIQUE NOT NULL;
 -- inventory deducts via Update/Edit Total Stock; dashboard + inventory read it).
 -- Existing DBs: run just this CREATE once in phpMyAdmin.
 CREATE TABLE total (
-    total_stock INT NOT NULL DEFAULT 0
+    total_stock DECIMAL(10,2) NOT NULL DEFAULT 0.00
 );
+
+-- ID RULE: a completed production batch keeps ONE id end to end.
+-- updateBatch.php inserts the inventory row with prod_id = production.batch_id,
+-- so the Batch ID (Production History) and the Item ID (Inventory) always match.
+-- The inventory description is batch-only ('Batch: <batch_id>'): no Receiver
+-- prefix is saved because the create-batch form never collects a receiver.
+-- Inventory rows are permanent records: never edited or deleted in code.

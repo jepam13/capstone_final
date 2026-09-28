@@ -25,10 +25,10 @@ $rangeStmt->execute([':prod' => $selProduct]);
 $rangeRow = $rangeStmt->fetch(PDO::FETCH_ASSOC);
 $rangeLabel = ($rangeRow && $rangeRow['mn']) ? date('F Y', strtotime($rangeRow['mn'])) . ' - ' . date('F Y', strtotime($rangeRow['mx'])) : 'No completed data';
 
-// Current inventory of the selected product.
-$curStmt = $pdo->prepare("SELECT COALESCE(SUM(quantity), 0) FROM inventory WHERE status != 'Completed' AND product = :prod");
-$curStmt->execute([':prod' => $selProduct]);
-$currentStock = (int)$curStmt->fetchColumn();
+// Current inventory of the selected product (single-row total ledger).
+$curStmt = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
+$curStmt->execute();
+$currentStock = round((float)($curStmt->fetchColumn() ?? 0), 2);
 
 $forecast = null;
 $method = '';
@@ -154,18 +154,27 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['generate'])) {
                     <span>Run computed but not saved (forecasting_history table missing - run its CREATE from database_query).</span>
                 </div>
                 <?php endif; ?>
-                <div class="forecast-summary-bar">
-                    <div class="summary-item">
-                        <span class="summary-label"><i class="fa-solid fa-basket-shopping"></i> Current Inventory:</span>
-                        <span class="summary-value"><strong><?= number_format($currentStock) ?></strong> Sacks</span>
+                <h3 style="margin: 0 0 14px; font-size: 1.05rem;">Demand Forecast Overview</h3>
+                <div class="info-cards">
+                    <div class="stat-card stat-card-green">
+                        <h2>Predicted Demand</h2>
+                        <h3><?= rtrim(rtrim(number_format((float) $total, 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                        <div class="stat-sub">Next 7 days</div>
                     </div>
-                    <div class="summary-item">
-                        <span class="summary-label"><i class="fa-solid fa-chart-simple"></i> Forecasted Demand:</span>
-                        <span class="summary-value"><strong><?= number_format($total) ?></strong> Sacks</span>
+                    <div class="stat-card stat-card-blue">
+                        <h2>Available Stock</h2>
+                        <h3><?= rtrim(rtrim(number_format((float) $currentStock, 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                        <div class="stat-sub">Current inventory</div>
                     </div>
-                    <div class="summary-item">
-                        <span class="summary-label"><i class="fa-solid fa-scale-balanced"></i> Difference:</span>
-                        <span class="summary-value"><strong><?= ($diff >= 0 ? '+' : '') . number_format($diff) ?></strong> Sacks</span>
+                    <div class="stat-card stat-card-amber">
+                        <h2>Estimated Shortfall</h2>
+                        <h3><?= rtrim(rtrim(number_format((float) max(0, $total - $currentStock), 2, '.', ''), '0'), '.') ?> Sacks</h3>
+                        <div class="stat-sub">Illustrative planning estimate</div>
+                    </div>
+                    <div class="stat-card stat-card-purple">
+                        <h2>Forecast Period</h2>
+                        <h3>7 Days</h3>
+                        <div class="stat-sub"><?= htmlspecialchars(date('M d', strtotime($today . ' +1 day')) . ' - ' . date('M d', strtotime($today . ' +7 days'))) ?></div>
                     </div>
                 </div>
             </div>

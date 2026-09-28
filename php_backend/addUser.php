@@ -3,6 +3,7 @@ require_once "db.php";
 
 if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['username']) && isset($_POST['password']) && isset($_POST['role'])) {
     $username = trim($_POST['username']);
+    $fullname = trim($_POST['fullname'] ?? '');
     $password = trim($_POST['password']);
     $role = trim($_POST['role']);
 
@@ -41,9 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['username']) && isset($
     $hashedpassword = password_hash($password, PASSWORD_ARGON2ID);
 
     # Insert user
-    $stmt = $pdo->prepare("INSERT INTO accounts (role, user, pass, admin) VALUES (:roles, :username, :hashedpassword, :administ)");
+    $stmt = $pdo->prepare("INSERT INTO accounts (role, user, name, pass, admin) VALUES (:roles, :username, :fullname, :hashedpassword, :administ)");
     $stmt->bindValue(':roles', $role);
     $stmt->bindValue(':username', $username);
+    $stmt->bindValue(':fullname', $fullname !== '' ? $fullname : null);
     $stmt->bindValue(':hashedpassword', $hashedpassword);
     $stmt->bindValue(':administ', $is_admin);
 

@@ -154,7 +154,7 @@ if ((isset($_POST['username'])) && (isset($_POST['password'])) && $_SERVER['REQU
                 </form>
             </div>
 
-
+<!--
             <div class="login-card-footer">
                 <div class="demo-title">Register to get started</div>
                 <div class="demo-cred"><button commandfor="register-diag" command="show-modal">Register</button>
@@ -162,7 +162,7 @@ if ((isset($_POST['username'])) && (isset($_POST['password'])) && $_SERVER['REQU
             </div>
 
 
-            <!--Register Form in a dialog container-->
+            Register Form in a dialog container
             <dialog id="register-diag">
                 <div class="dialog-header">
                     <img src="assets/img/logo.png" id="logo">
@@ -196,7 +196,7 @@ if ((isset($_POST['username'])) && (isset($_POST['password'])) && $_SERVER['REQU
                         </div>
                     </form>
                 </div>
-            </dialog>
+            </dialog>-->
 
             <!--Dialog feedback-->
             <dialog id="message-diag">
