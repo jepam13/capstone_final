@@ -1,35 +1,36 @@
 <?php
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['item']) && isset($_POST['quantity'])) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['item'])) {
     require_once "session.php";
     requireRole(['admin', 'staff']);
 
     $item = trim($_POST['item']);
-    $quantity = $_POST['quantity'] ?? '';
-    $unit = $_POST['unit'];
-    $receiver = $_POST['company'] ?? '';
+    $unit = trim($_POST['unit'] ?? 'Sacks');
+    if ($unit === '') {
+        $unit = 'Sacks';
+    }
+    $receiver = trim($_POST['company'] ?? $_POST['receiver'] ?? '');
 
-    $batch_id = substr(str_shuffle("0123456789"), 0, 7);
+    $batch_id = substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 7);
     # Check for duplicate ID (very unlikely but safety check)
-    $stmt = $pdo->prepare("SELECT production_id FROM production WHERE production_id = :id");
+    $stmt = $pdo->prepare("SELECT batch_id FROM production WHERE batch_id = :id");
     $stmt->bindValue(':id', $batch_id);
     $stmt->execute();
     if ($stmt->fetchColumn()) {
         // Retry with new ID
-        $batch_id = substr(str_shuffle("0123456789"), 0, 7);
+        $batch_id = substr(str_shuffle("0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"), 0, 7);
     }
 
     # INsert into Production db
-    $stmt = $pdo->prepare("INSERT INTO production (batch_id, quantity,item, unit, receiver) VALUES (:batch_id, :quantity, :item, :unit, :receiver)");
+    $stmt = $pdo->prepare("INSERT INTO production (batch_id, quantity, item, unit, receiver, status, production_date) VALUES (:batch_id, 0, :item, :unit, :receiver, 'Ongoing', CURDATE())");
     $stmt->bindValue(':batch_id', $batch_id);
-    $stmt->bindValue(':quantity', $quantity);
     $stmt->bindValue(':item', $item);
     $stmt->bindValue(':unit', $unit);
     $stmt->bindValue(':receiver', $receiver);
 
 
     if ($stmt->execute()) {
-        $hist = $pdo->prepare("INSERT INTO history (user, action, ref_id, product, quantity, unit) VALUES (:user, 'Created Batch', :ref, :prod, :quan, :unit)");
-        $hist->execute([':user' => $_SESSION['user_name'] ?? '', ':ref' => $batch_id, ':prod' => $item, ':quan' => $quantity, ':unit' => $unit]);
+        $hist = $pdo->prepare("INSERT INTO history (user, action, ref_id, product, quantity, unit) VALUES (:user, 'Created Batch', :ref, :prod, 0, :unit)");
+        $hist->execute([':user' => $_SESSION['user_name'] ?? '', ':ref' => $batch_id, ':prod' => $item, ':unit' => $unit]);
         header("Location: ../production.php");
         exit;
     } else {echo "Cannot add into production.";}

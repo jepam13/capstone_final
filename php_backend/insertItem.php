@@ -2,6 +2,72 @@
 require_once "session.php";
 requireRole(['admin', 'manager']);
 
+// Remove Item: deduct the entered amount (Sacks) from each selected row.
+// Deletes the row when emptied; subtracts what was actually removed from
+// total_stock (floored at 0). Completed history rows are never touched.
+if ($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['quantity']) && !isset($_POST['product_name'])) {
+    $entered = (int)($_POST['quantity'] ?? 0);
+    $ids = [];
+    if (!empty($_POST['checklist_product_ids'])) {
+        $ids = array_filter(array_map('trim', explode(',', $_POST['checklist_product_ids'])));
+    } elseif (!empty($_POST['product_id'])) {
+        $ids = [trim($_POST['product_id'])];
+    } elseif (!empty($_POST['checklist_items']) && is_array($_POST['checklist_items'])) {
+        $ids = array_map('trim', $_POST['checklist_items']);
+    }
+    $ids = array_unique($ids);
+    if ($entered <= 0 || empty($ids)) {
+        header("Location: ../inventory.php?error=1");
+        exit;
+    }
+
+    $removedTotal = 0;
+    foreach ($ids as $pid) {
+        $stmt = $pdo->prepare("SELECT quantity, status FROM inventory WHERE prod_id = :id");
+        $stmt->execute([':id' => $pid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row || $row['status'] === 'Completed') {
+            continue;
+        }
+        $removed = min($entered, (int)$row['quantity']);
+        if ($removed <= 0) {
+            continue;
+        }
+        $left = (int)$row['quantity'] - $removed;
+        if ($left <= 0) {
+            $del = $pdo->prepare("DELETE FROM inventory WHERE prod_id = :id");
+            $del->execute([':id' => $pid]);
+        } else {
+            $upd = $pdo->prepare("UPDATE inventory SET quantity = :q, updated_at = NOW() WHERE prod_id = :id");
+            $upd->execute([':q' => $left, ':id' => $pid]);
+        }
+        $removedTotal += $removed;
+    }
+
+    if ($removedTotal > 0) {
+        // Optional ledger table: skip silently when it does not exist.
+        // Live stock is always SUM(quantity) from inventory.
+        try {
+            $stmtTotal = $pdo->prepare("SELECT total_stock FROM total LIMIT 1");
+            $stmtTotal->execute();
+            $trow = $stmtTotal->fetch(PDO::FETCH_ASSOC);
+            if ($trow) {
+                $newTotal = (int)$trow['total_stock'] - $removedTotal;
+                if ($newTotal < 0) {
+                    $newTotal = 0;
+                }
+                $updT = $pdo->prepare("UPDATE total SET total_stock = :total");
+                $updT->execute([':total' => $newTotal]);
+            }
+        } catch (Exception $e) {
+            // no total table — nothing to update
+        }
+    }
+
+    header("Location: ../inventory.php?success=1");
+    exit;
+}
+
 if($_SERVER['REQUEST_METHOD'] == "POST" && isset($_POST['product_name']) && isset($_POST['quantity'])) {
     $product = trim($_POST['product_name']);
     $quantity = (int)$_POST['quantity'];

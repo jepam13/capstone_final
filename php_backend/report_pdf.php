@@ -135,10 +135,7 @@ if ($branch === 'production') {
     if (!in_array($fcProd, $fcProdOpts, true)) {
         $fcProd = $fcProdOpts[0] ?? 'Vermicast';
     }
-    $fcPeriod = $_GET['fc-period'] ?? '30';
-    if (!in_array($fcPeriod, ['7', '14', '30'], true)) {
-        $fcPeriod = '30';
-    }
+    $fcPeriod = '7';
     $fcToday = date('Y-m-d');
     $fcTailStmt = $pdo->prepare("SELECT DATE(updated_at) AS day, SUM(quantity) AS q FROM inventory WHERE status = 'Completed' AND product = :prod AND updated_at >= :start GROUP BY DATE(updated_at)");
     $fcTailStmt->execute([':prod' => $fcProd, ':start' => date('Y-m-d', strtotime($fcToday . ' -6 days')) . ' 00:00:00']);
@@ -152,7 +149,7 @@ if ($branch === 'production') {
         $fcTailDays[] = $ctd;
         $ctd = date('Y-m-d', strtotime($ctd . ' +1 day'));
     }
-    $fcRes = runForecast($pdo, $fcProd, 365, (int)$fcPeriod, 'auto');
+    $fcRes = runForecast($pdo, $fcProd);
     $rows = [];
     foreach ($fcTailDays as $cd) {
         $rows[] = [date('M d', strtotime($cd)), (string)($fcTailMap[$cd] ?? 0), '-'];
