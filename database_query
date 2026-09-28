@@ -188,3 +188,10 @@ ALTER TABLE accounts MODIFY user VARCHAR(50) UNIQUE NOT NULL;
 -- 1. FIXED: php_backend/updateBatch.php now updates `WHERE production_id`.
 -- 2. `accounts.role UNIQUE` allows only one staff / one manager total.
 --    If multi-user testing needs several staffs, drop that UNIQUE.
+
+-- Single-row ledger for Total Stock (production adds on Completed batches,
+-- inventory deducts via Update/Edit Total Stock; dashboard + inventory read it).
+-- Existing DBs: run just this CREATE once in phpMyAdmin.
+CREATE TABLE total (
+    total_stock INT NOT NULL DEFAULT 0
+);
